@@ -1,0 +1,488 @@
+# API
+
+Varsayılan yerel API adresleri:
+
+- Docker: `http://localhost:8080`
+- Yerel `dotnet run`: `http://localhost:5248` ve `https://localhost:7248`
+
+API sözleşmesi `/api/v1` altındadır. Eski `/api` yolları geçiş uyumluluğu için açık tutulur.
+
+Kimlik gerektiren çağrılarda header:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Kritik stok yazma işlemlerinde istemci tekrar deneme yapacaksa idempotency header'ı gönderilmelidir:
+
+```http
+Idempotency-Key: <client-generated-unique-key>
+```
+
+Aynı key aynı istek gövdesiyle tekrar kullanıldığında sistem daha önce oluşan sonucu döndürür ve stok ikinci kez değişmez. Aynı key farklı payload ile kullanılırsa `idempotency_key_conflict` hatası döner.
+
+Bu header şu işlemlerde desteklenir:
+
+- `POST /api/v1/stock/movements`
+- `POST /api/v1/warehouses/transfers`
+- `POST /api/v1/purchase-requests/{id}/receive`
+- `POST /api/v1/shipments`
+- `POST /api/v1/returns`
+- `POST /api/v1/counts/{id}/close`
+
+## Authentication
+
+`POST /api/v1/auth/register-tenant`
+
+```json
+{
+  "businessName": "STOKIO Demo",
+  "tenantSlug": "stokio-demo",
+  "ownerName": "Talha",
+  "email": "owner@stokio.local",
+  "password": "StrongPass123",
+  "taxNumber": null,
+  "phone": null
+}
+```
+
+`POST /api/v1/auth/login`
+
+```json
+{
+  "tenantSlug": "stokio-demo",
+  "email": "owner@stokio.local",
+  "password": "StrongPass123"
+}
+```
+
+## Products
+
+`GET /api/v1/products`
+
+Query:
+
+```text
+search
+categoryId
+isActive
+page
+pageSize
+```
+
+Response sayfalıdır:
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "pageSize": 25,
+  "totalCount": 0,
+  "totalPages": 0
+}
+```
+
+`POST /api/v1/products`
+
+```json
+{
+  "sku": "KBL-001",
+  "name": "USB-C Kablo",
+  "description": "1 metre",
+  "categoryName": "Aksesuar",
+  "criticalStockLevel": 5,
+  "initialStock": 25,
+  "barcodes": ["8690000000010"]
+}
+```
+
+`PUT /api/v1/products/{id}`
+
+`POST /api/v1/products/{id}/barcodes`
+
+```json
+{
+  "barcode": "8690000000027",
+  "isPrimary": false
+}
+```
+
+`DELETE /api/v1/products/{id}` ürünü pasife alır.
+
+## Categories
+
+`GET /api/v1/categories`
+
+`POST /api/v1/categories`
+
+```json
+{
+  "name": "Aksesuar"
+}
+```
+
+`PUT /api/v1/categories/{id}`
+
+```json
+{
+  "name": "Telefon Aksesuarı",
+  "isActive": true
+}
+```
+
+`DELETE /api/v1/categories/{id}` kategoriyi pasife alır.
+
+## Users
+
+Bu endpointler `Owner` rolü gerektirir.
+
+`GET /api/v1/users`
+
+`POST /api/v1/users`
+
+```json
+{
+  "fullName": "Personel",
+  "email": "staff@stokio.local",
+  "password": "StrongPass123",
+  "role": "Staff"
+}
+```
+
+`PUT /api/v1/users/{id}`
+
+`DELETE /api/v1/users/{id}` kullanıcıyı pasife alır.
+
+## Warehouses
+
+Bu endpointler orta ve büyük işletmeler için çoklu depo/lokasyon stok yönetimini sağlar.
+
+`GET /api/v1/warehouses`
+
+`POST /api/v1/warehouses`
+
+```json
+{
+  "code": "MAIN",
+  "name": "Ana Depo",
+  "address": "Merkez",
+  "isDefault": true
+}
+```
+
+`PUT /api/v1/warehouses/{id}`
+
+`DELETE /api/v1/warehouses/{id}` depoyu pasife alır. Varsayılan veya içinde stok olan depo pasife alınamaz.
+
+`GET /api/v1/warehouses/stocks`
+
+Query:
+
+```text
+warehouseId
+productId
+```
+
+`POST /api/v1/warehouses/transfers`
+
+```json
+{
+  "productId": "00000000-0000-0000-0000-000000000000",
+  "fromWarehouseId": "00000000-0000-0000-0000-000000000000",
+  "toWarehouseId": "00000000-0000-0000-0000-000000000000",
+  "quantity": 5,
+  "reason": "Şube replenishment"
+}
+```
+
+Transfer toplam ürün stok miktarını değiştirmez; kaynak depo bakiyesini azaltır, hedef depo bakiyesini artırır ve iki hareket satırı oluşturur: `TransferOut`, `TransferIn`.
+
+## Stock
+
+`POST /api/v1/stock/movements`
+
+```json
+{
+  "productId": "00000000-0000-0000-0000-000000000000",
+  "warehouseId": null,
+  "type": "In",
+  "quantity": 10,
+  "reason": "Tedarik"
+}
+```
+
+`type` değerleri:
+
+- `In`: stok artırır
+- `Out`: stok azaltır
+- `Adjustment`: `quantity` değerini yeni stok miktarı olarak uygular
+- `CountCorrection`: sayım kaynaklı düzeltme olarak `quantity` değerini yeni stok miktarı olarak uygular
+- `TransferIn` ve `TransferOut`: sadece transfer endpoint'i tarafından oluşturulur
+
+`GET /api/v1/stock/movements`
+
+Query:
+
+```text
+productId
+warehouseId
+type
+from
+to
+page
+pageSize
+```
+
+`GET /api/v1/stock/critical`
+
+`GET /api/v1/stock/consistency`
+
+Stok yazma işlemleri transaction içinde çalışır. Eş zamanlı stok güncellemesi çakışırsa API `stock_concurrency_conflict` problemiyle 409 döndürür.
+
+## Inventory Counts
+
+`POST /api/v1/counts`
+
+```json
+{
+  "name": "Haziran Sayımı",
+  "warehouseId": null
+}
+```
+
+`warehouseId` verilmezse varsayılan depo sayılır. Farklar uygulanırken yalnızca ilgili depo bakiyesi düzeltilir.
+
+`POST /api/v1/counts/{id}/items/scan`
+
+```json
+{
+  "barcode": "8690000000010",
+  "quantity": 1
+}
+```
+
+`GET /api/v1/counts/{id}/differences`
+
+`POST /api/v1/counts/{id}/close`
+
+```json
+{
+  "applyDifferences": true
+}
+```
+
+## Customers And Suppliers
+
+Cari kart endpointleri satis, sevkiyat, iade ve alim talep formlarinda kullanilan kayitli taraflari yonetir.
+
+`GET /api/v1/customers`
+
+Query:
+
+```text
+search
+isActive
+page
+pageSize
+```
+
+`POST /api/v1/customers`
+
+```json
+{
+  "code": "C-001",
+  "name": "Techno Market A.S.",
+  "contactName": "Ahmet Yilmaz",
+  "email": "ahmet@example.com",
+  "phone": "05551234567",
+  "taxNumber": "1234567890",
+  "address": "Istanbul",
+  "notes": "Oncelikli musteri"
+}
+```
+
+`PUT /api/v1/customers/{id}`
+
+```json
+{
+  "code": "C-001",
+  "name": "Techno Market A.S.",
+  "contactName": "Ahmet Yilmaz",
+  "email": "ahmet@example.com",
+  "phone": "05551234567",
+  "taxNumber": "1234567890",
+  "address": "Istanbul",
+  "notes": "Oncelikli musteri",
+  "isActive": true
+}
+```
+
+`DELETE /api/v1/customers/{id}` musteriyi pasife alir.
+
+`GET /api/v1/suppliers`
+
+Query:
+
+```text
+search
+isActive
+page
+pageSize
+```
+
+`POST /api/v1/suppliers`
+
+```json
+{
+  "code": "S-001",
+  "name": "Telco Tedarik A.S.",
+  "contactName": "Zeynep Kaya",
+  "email": "tedarik@example.com",
+  "phone": "05557654321",
+  "taxNumber": null,
+  "address": "Ankara",
+  "notes": null
+}
+```
+
+`PUT /api/v1/suppliers/{id}`
+
+`DELETE /api/v1/suppliers/{id}` tedarikciyi pasife alir.
+
+## Operations
+
+Operasyon endpointleri satis, tedarik, sevkiyat ve iade akisini yonetir. Tum operasyonlar tenant izolasyonu ve rol bazli yetkilendirme altindadir.
+
+### Orders
+
+`GET /api/v1/orders`
+
+`POST /api/v1/orders`
+
+```json
+{
+  "customerId": "00000000-0000-0000-0000-000000000000",
+  "customerName": "Techno Market A.S.",
+  "warehouseId": "00000000-0000-0000-0000-000000000000",
+  "notes": "Magaza teslimi",
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+Siparis olusturmak stok miktarini degistirmez. Stok dusumu sevkiyat olusturuldugunda yapilir.
+
+### Purchase Requests
+
+`GET /api/v1/purchase-requests`
+
+`POST /api/v1/purchase-requests`
+
+```json
+{
+  "supplierId": "00000000-0000-0000-0000-000000000000",
+  "supplierName": "Telco Tedarik A.S.",
+  "warehouseId": "00000000-0000-0000-0000-000000000000",
+  "notes": "Acil tedarik",
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "quantity": 10
+    }
+  ]
+}
+```
+
+`POST /api/v1/purchase-requests/{id}/approve`
+
+`POST /api/v1/purchase-requests/{id}/receive`
+
+Alim talebi olusturma ve onaylama stok degistirmez. `receive` cagrisi ilgili depo bakiyesini ve toplam urun stok miktarini artirir.
+
+### Shipments
+
+`GET /api/v1/shipments`
+
+`POST /api/v1/shipments`
+
+```json
+{
+  "salesOrderId": "00000000-0000-0000-0000-000000000000",
+  "customerId": "00000000-0000-0000-0000-000000000000",
+  "recipientName": "Techno Market A.S.",
+  "warehouseId": "00000000-0000-0000-0000-000000000000",
+  "trackingNumber": "SVK-2026-001",
+  "notes": "Kargo teslimi",
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+Sevkiyat olusturmak stoktan dusum yapar. `salesOrderId` verilirse ilgili siparis sevk edildi durumuna alinir.
+
+### Returns
+
+`GET /api/v1/returns`
+
+`POST /api/v1/returns`
+
+```json
+{
+  "salesOrderId": null,
+  "customerId": "00000000-0000-0000-0000-000000000000",
+  "customerName": "Techno Market A.S.",
+  "warehouseId": "00000000-0000-0000-0000-000000000000",
+  "reason": "Hasarli paket",
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "quantity": 1
+    }
+  ]
+}
+```
+
+Iade olusturmak ilgili depo bakiyesini ve toplam urun stok miktarini artirir.
+
+## Reports
+
+`GET /api/v1/reports/current-stock`
+
+`GET /api/v1/reports/critical-stock`
+
+`GET /api/v1/reports/movements`
+
+`GET /api/v1/reports/count-differences/{countId}`
+
+## Exports
+
+Excel `.xlsx` çıktıları:
+
+`GET /api/v1/exports/current-stock.xlsx`
+
+`GET /api/v1/exports/critical-stock.xlsx`
+
+`GET /api/v1/exports/movements.xlsx`
+
+`GET /api/v1/exports/count-differences/{countId}.xlsx`
+
+## Error Format
+
+Hatalar `application/problem+json` formatındadır.
+
+```json
+{
+  "type": "https://stokio.local/problems/product_not_found",
+  "title": "product_not_found",
+  "status": 404,
+  "detail": "Product was not found."
+}
+```
