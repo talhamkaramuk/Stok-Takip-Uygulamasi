@@ -56,4 +56,8 @@ Operasyon modeli stok defterinin ustune is sureci katmani ekler:
 
 Yeni sözleşmeler `/api/v1` altındadır. Geçiş uyumluluğu için `/api` yolları da map edilir; bu legacy yüzey response olarak `Deprecation: true`, `Sunset: Thu, 31 Dec 2026 23:59:59 GMT` ve `/api/v1` successor link header'ı döndürür. Yeni istemciler yalnızca `/api/v1` kullanmalıdır.
 
-`frontend` React ve TypeScript ile hazırlanmış operasyonel SPA arayüzüdür.
+`frontend` React ve TypeScript ile hazırlanmış operasyonel SPA arayüzüdür. UI kodu tek `App.tsx` dosyası yerine aşağıdaki sorumluluk sınırlarıyla ayrılır:
+
+- `frontend/src/app`: oturum başlangıcı, uygulama kabuğu, navigasyon ve sayfa metrikleri.
+- `frontend/src/domains`: ürün, stok, sayım, depo, sipariş, alım, sevkiyat, iade, müşteri, tedarikçi, kullanıcı ve rapor ekranları.
+- `frontend/src/shared`: API client, ortak UI bileşenleri, hata çevirisi, pagination hook'ları ve domain bağımsız yardımcı fonksiyonlar.
