@@ -356,8 +356,15 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "SalesOrderId" uuid NOT NULL,
             "ProductId" uuid NOT NULL,
             "Quantity" integer NOT NULL,
+            "ShippedQuantity" integer NOT NULL DEFAULT 0,
+            "ReturnedQuantity" integer NOT NULL DEFAULT 0,
+            "Version" integer NOT NULL DEFAULT 1,
             CONSTRAINT "PK_SalesOrderItems" PRIMARY KEY ("Id"),
             CONSTRAINT "CK_SalesOrderItems_Quantity_Positive" CHECK ("Quantity" > 0),
+            CONSTRAINT "CK_SalesOrderItems_ShippedQuantity_NonNegative" CHECK ("ShippedQuantity" >= 0),
+            CONSTRAINT "CK_SalesOrderItems_ReturnedQuantity_NonNegative" CHECK ("ReturnedQuantity" >= 0),
+            CONSTRAINT "CK_SalesOrderItems_ShippedQuantity_NotOverOrdered" CHECK ("ShippedQuantity" <= "Quantity"),
+            CONSTRAINT "CK_SalesOrderItems_ReturnedQuantity_NotOverShipped" CHECK ("ReturnedQuantity" <= "ShippedQuantity"),
             CONSTRAINT "FK_SalesOrderItems_Tenants_TenantId" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("Id") ON DELETE RESTRICT,
             CONSTRAINT "FK_SalesOrderItems_SalesOrders_SalesOrderId" FOREIGN KEY ("SalesOrderId") REFERENCES "SalesOrders" ("Id") ON DELETE CASCADE,
             CONSTRAINT "FK_SalesOrderItems_Products_ProductId" FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE RESTRICT
@@ -474,6 +481,17 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         ALTER TABLE "PurchaseRequests" ADD COLUMN IF NOT EXISTS "SupplierId" uuid;
         ALTER TABLE "Shipments" ADD COLUMN IF NOT EXISTS "CustomerId" uuid;
         ALTER TABLE "ReturnRequests" ADD COLUMN IF NOT EXISTS "CustomerId" uuid;
+        ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "ShippedQuantity" integer NOT NULL DEFAULT 0;
+        ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "ReturnedQuantity" integer NOT NULL DEFAULT 0;
+        ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "Version" integer NOT NULL DEFAULT 1;
+        UPDATE "SalesOrderItems" AS soi
+        SET "ShippedQuantity" = soi."Quantity"
+        FROM "SalesOrders" AS so
+        WHERE soi."SalesOrderId" = so."Id"
+          AND so."Status" IN ('Shipped', 'Completed')
+          AND soi."ShippedQuantity" = 0;
+        UPDATE "SalesOrders" SET "Status" = 'Pending' WHERE "Status" = 'Preparing';
+        UPDATE "SalesOrders" SET "Status" = 'Shipped' WHERE "Status" = 'Completed';
 
         DO $$
         BEGIN
@@ -488,6 +506,18 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ReturnRequests_Customers_CustomerId') THEN
                 ALTER TABLE "ReturnRequests" ADD CONSTRAINT "FK_ReturnRequests_Customers_CustomerId" FOREIGN KEY ("CustomerId") REFERENCES "Customers" ("Id") ON DELETE SET NULL;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_SalesOrderItems_ShippedQuantity_NonNegative') THEN
+                ALTER TABLE "SalesOrderItems" ADD CONSTRAINT "CK_SalesOrderItems_ShippedQuantity_NonNegative" CHECK ("ShippedQuantity" >= 0);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_SalesOrderItems_ReturnedQuantity_NonNegative') THEN
+                ALTER TABLE "SalesOrderItems" ADD CONSTRAINT "CK_SalesOrderItems_ReturnedQuantity_NonNegative" CHECK ("ReturnedQuantity" >= 0);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_SalesOrderItems_ShippedQuantity_NotOverOrdered') THEN
+                ALTER TABLE "SalesOrderItems" ADD CONSTRAINT "CK_SalesOrderItems_ShippedQuantity_NotOverOrdered" CHECK ("ShippedQuantity" <= "Quantity");
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_SalesOrderItems_ReturnedQuantity_NotOverShipped') THEN
+                ALTER TABLE "SalesOrderItems" ADD CONSTRAINT "CK_SalesOrderItems_ReturnedQuantity_NotOverShipped" CHECK ("ReturnedQuantity" <= "ShippedQuantity");
             END IF;
         END $$;
 

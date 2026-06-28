@@ -11,4 +11,7 @@ public sealed class SalesOrderItem : Entity, ITenantScoped
     public Guid ProductId { get; set; }
     public Product Product { get; set; } = null!;
     public int Quantity { get; set; }
+    public int ShippedQuantity { get; set; }
+    public int ReturnedQuantity { get; set; }
+    public int Version { get; set; } = 1;
 }

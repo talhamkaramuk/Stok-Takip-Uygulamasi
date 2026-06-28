@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using STOKIO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using STOKIO.Infrastructure.Persistence;
 namespace STOKIO.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(StokioDbContext))]
-    partial class StokioDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260628144904_AddSalesOrderFulfillmentState")]
+    partial class AddSalesOrderFulfillmentState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -222,9 +222,17 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
 
         modelBuilder.Entity<SalesOrderItem>(entity =>
         {
-            entity.ToTable(table => table.HasCheckConstraint("ck_sales_order_items_quantity_positive", "\"Quantity\" > 0"));
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("ck_sales_order_items_quantity_positive", "\"Quantity\" > 0");
+                table.HasCheckConstraint("ck_sales_order_items_shipped_quantity_non_negative", "\"ShippedQuantity\" >= 0");
+                table.HasCheckConstraint("ck_sales_order_items_returned_quantity_non_negative", "\"ReturnedQuantity\" >= 0");
+                table.HasCheckConstraint("ck_sales_order_items_shipped_quantity_not_over_ordered", "\"ShippedQuantity\" <= \"Quantity\"");
+                table.HasCheckConstraint("ck_sales_order_items_returned_quantity_not_over_shipped", "\"ReturnedQuantity\" <= \"ShippedQuantity\"");
+            });
             entity.HasQueryFilter(x => x.TenantId == TenantFilterId);
             entity.HasIndex(x => new { x.TenantId, x.SalesOrderId, x.ProductId });
+            entity.Property(x => x.Version).HasDefaultValue(1).IsConcurrencyToken();
             entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.SalesOrder).WithMany(x => x.Items).HasForeignKey(x => x.SalesOrderId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
@@ -358,6 +366,14 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
         }
 
         foreach (var entry in ChangeTracker.Entries<WarehouseStock>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.Version++;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<SalesOrderItem>())
         {
             if (entry.State == EntityState.Modified)
             {

@@ -287,6 +287,9 @@ public static class DevelopmentDataSeeder
         {
             var product = products[i % products.Count];
             var customer = customers[i % customers.Count];
+            var quantity = 3 + i % 3;
+            var shippedQuantity = i < 3 ? 0 : i < 5 ? quantity - 1 : quantity;
+            var returnedQuantity = i >= 4 ? 1 : 0;
             var order = new SalesOrder
             {
                 TenantId = tenantId,
@@ -294,10 +297,21 @@ public static class DevelopmentDataSeeder
                 CustomerId = customer.Id,
                 CustomerName = customer.Name,
                 WarehouseId = warehouses[i % 2 == 0 ? "MAIN" : "ANK"].Id,
-                Status = i < 3 ? SalesOrderStatus.Preparing : SalesOrderStatus.Shipped,
+                Status = shippedQuantity == 0
+                    ? SalesOrderStatus.Pending
+                    : shippedQuantity < quantity
+                        ? SalesOrderStatus.PartiallyShipped
+                        : SalesOrderStatus.Shipped,
                 Notes = "Demo sipariş"
             };
-            order.Items.Add(new SalesOrderItem { TenantId = tenantId, ProductId = product.Id, Quantity = 1 + i % 3 });
+            order.Items.Add(new SalesOrderItem
+            {
+                TenantId = tenantId,
+                ProductId = product.Id,
+                Quantity = quantity,
+                ShippedQuantity = shippedQuantity,
+                ReturnedQuantity = returnedQuantity
+            });
             orders.Add(order);
         }
 
@@ -326,7 +340,7 @@ public static class DevelopmentDataSeeder
         for (var i = 0; i < 5; i++)
         {
             var order = orders[i + 3];
-            var product = products[(i + 1) % products.Count];
+            var orderItem = order.Items[0];
             var shipment = new Shipment
             {
                 TenantId = tenantId,
@@ -340,15 +354,15 @@ public static class DevelopmentDataSeeder
                 Status = ShipmentStatus.Completed,
                 ShippedAt = now.AddDays(-i)
             };
-            shipment.Items.Add(new ShipmentItem { TenantId = tenantId, ProductId = product.Id, Quantity = 1 + i % 2 });
+            shipment.Items.Add(new ShipmentItem { TenantId = tenantId, ProductId = orderItem.ProductId, Quantity = orderItem.ShippedQuantity });
             shipments.Add(shipment);
         }
 
         var returns = new List<ReturnRequest>();
         for (var i = 0; i < 4; i++)
         {
-            var order = orders[i + 2];
-            var product = products[(i + 3) % products.Count];
+            var order = orders[i + 4];
+            var orderItem = order.Items[0];
             var returnRequest = new ReturnRequest
             {
                 TenantId = tenantId,
@@ -362,7 +376,7 @@ public static class DevelopmentDataSeeder
                 Status = ReturnRequestStatus.Received,
                 ReceivedAt = now.AddDays(-i)
             };
-            returnRequest.Items.Add(new ReturnRequestItem { TenantId = tenantId, ProductId = product.Id, Quantity = 1 });
+            returnRequest.Items.Add(new ReturnRequestItem { TenantId = tenantId, ProductId = orderItem.ProductId, Quantity = orderItem.ReturnedQuantity });
             returns.Add(returnRequest);
         }
 

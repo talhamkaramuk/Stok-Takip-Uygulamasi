@@ -8,7 +8,9 @@ public sealed record OperationItemDto(
     Guid ProductId,
     string Sku,
     string ProductName,
-    int Quantity);
+    int Quantity,
+    int ShippedQuantity = 0,
+    int ReturnedQuantity = 0);
 
 public sealed record CreateSalesOrderRequest(
     string CustomerName,

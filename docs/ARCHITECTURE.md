@@ -42,9 +42,10 @@ Operasyon modeli stok defterinin ustune is sureci katmani ekler:
 - `Customer` satis, sevkiyat ve iade akislari icin tenant bazli musteri kartlarini tutar.
 - `Supplier` alim talep akisi icin tenant bazli tedarikci kartlarini tutar.
 - `SalesOrder` musteri siparislerini ve sevkiyat durumunu izler; tek basina stok degistirmez.
+- `SalesOrderItem` ordered quantity, shipped quantity ve returned quantity sayaclarini tutar. `shipped <= ordered` ve `returned <= shipped` kurallari hem servis validasyonu hem veritabani constraint'leri ile korunur.
 - `PurchaseRequest` tedarik talebini, onayi ve teslim alma adimini izler; stok artisi yalnizca teslim alma adiminda olusur.
-- `Shipment` siparise bagli veya bagimsiz sevkiyatlari tutar; stok dusumu bu adimda yapilir.
-- `ReturnRequest` musteri iadelerini kaydeder; iade edilen miktar ilgili depoya geri girer.
+- `Shipment` siparise bagli veya bagimsiz sevkiyatlari tutar; stok dusumu bu adimda yapilir. Siparise bagli sevkiyat fazla sevkiyati engeller ve siparisi `PartiallyShipped` veya `Shipped` durumuna tasir.
+- `ReturnRequest` musteri iadelerini kaydeder; iade edilen miktar ilgili depoya geri girer. Siparise bagli iadelerde miktar, daha once sevk edilmis ve henuz iade edilmemis bakiye ile sinirlanir.
 
 ## Presentation
 

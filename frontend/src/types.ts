@@ -176,9 +176,11 @@ export type OperationItem = {
   sku: string;
   productName: string;
   quantity: number;
+  shippedQuantity: number;
+  returnedQuantity: number;
 };
 
-export type SalesOrderStatus = "Preparing" | "Shipped" | "Completed" | "Cancelled";
+export type SalesOrderStatus = "Draft" | "Pending" | "PartiallyShipped" | "Shipped" | "Cancelled";
 
 export type SalesOrder = {
   id: string;

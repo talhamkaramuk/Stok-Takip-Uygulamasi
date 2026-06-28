@@ -298,7 +298,9 @@ public sealed class ShipmentService(
 
             var warehouse = await stockLedger.ResolveWarehouseAsync(request.WarehouseId, ct);
             var order = request.SalesOrderId.HasValue
-                ? await dbContext.SalesOrders.SingleOrDefaultAsync(x => x.Id == request.SalesOrderId.Value, ct)
+                ? await dbContext.SalesOrders
+                    .Include(x => x.Items)
+                    .SingleOrDefaultAsync(x => x.Id == request.SalesOrderId.Value, ct)
                 : null;
             if (request.SalesOrderId.HasValue && order is null)
             {
@@ -306,6 +308,7 @@ public sealed class ShipmentService(
             }
 
             var items = await OperationStock.ResolveItemsAsync(dbContext, request.Items, ct);
+            OperationOrderFulfillment.EnsureCanShip(order, items);
             var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, items, warehouse.Id, ct);
             var customerId = request.CustomerId ?? order?.CustomerId;
             var customer = await OperationParties.ResolveCustomerAsync(dbContext, customerId, ct);
@@ -344,12 +347,11 @@ public sealed class ShipmentService(
                     Product = item.Product,
                     Quantity = item.Quantity
                 });
+
+                OperationOrderFulfillment.ApplyShipment(order, item.Product.Id, item.Quantity);
             }
 
-            if (order is not null && order.Status != SalesOrderStatus.Cancelled)
-            {
-                order.Status = SalesOrderStatus.Shipped;
-            }
+            OperationOrderFulfillment.RefreshShipmentStatus(order);
 
             dbContext.Shipments.Add(shipment);
             auditWriter.AddSnapshot("shipment.created", nameof(Shipment), shipment.Id, null, OperationMapper.ShipmentSnapshot(shipment));
@@ -442,7 +444,9 @@ public sealed class ReturnRequestService(
 
             var warehouse = await stockLedger.ResolveWarehouseAsync(request.WarehouseId, ct);
             var order = request.SalesOrderId.HasValue
-                ? await dbContext.SalesOrders.SingleOrDefaultAsync(x => x.Id == request.SalesOrderId.Value, ct)
+                ? await dbContext.SalesOrders
+                    .Include(x => x.Items)
+                    .SingleOrDefaultAsync(x => x.Id == request.SalesOrderId.Value, ct)
                 : null;
             if (request.SalesOrderId.HasValue && order is null)
             {
@@ -450,6 +454,7 @@ public sealed class ReturnRequestService(
             }
 
             var items = await OperationStock.ResolveItemsAsync(dbContext, request.Items, ct);
+            OperationOrderFulfillment.EnsureCanReturn(order, items);
             var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, items, warehouse.Id, ct);
             var customerId = request.CustomerId ?? order?.CustomerId;
             var customer = await OperationParties.ResolveCustomerAsync(dbContext, customerId, ct);
@@ -487,6 +492,8 @@ public sealed class ReturnRequestService(
                     Product = item.Product,
                     Quantity = item.Quantity
                 });
+
+                OperationOrderFulfillment.ApplyReturn(order, item.Product.Id, item.Quantity);
             }
 
             dbContext.ReturnRequests.Add(returnRequest);
@@ -578,6 +585,125 @@ file static class OperationParties
     public static string NameOrFallback(Supplier? supplier, string fallback)
     {
         return supplier?.Name ?? fallback.Trim();
+    }
+}
+
+file static class OperationOrderFulfillment
+{
+    public static void EnsureCanShip(SalesOrder? order, IReadOnlyList<(Product Product, int Quantity)> items)
+    {
+        if (order is null)
+        {
+            return;
+        }
+
+        if (order.Status is SalesOrderStatus.Draft or SalesOrderStatus.Cancelled)
+        {
+            throw new AppProblemException(409, "sales_order_not_shippable", "Sipariş sevkiyata uygun durumda değil.");
+        }
+
+        foreach (var item in items)
+        {
+            var remaining = order.Items
+                .Where(x => x.ProductId == item.Product.Id)
+                .Sum(x => x.Quantity - x.ShippedQuantity);
+
+            if (remaining == 0 && order.Items.All(x => x.ProductId != item.Product.Id))
+            {
+                throw new AppProblemException(400, "shipment_item_not_ordered", "Sevkiyat kalemi bağlı siparişte bulunmuyor.");
+            }
+
+            if (item.Quantity > remaining)
+            {
+                throw new AppProblemException(400, "shipment_quantity_exceeds_order_remaining", "Sevkiyat miktarı siparişte kalan sevk edilebilir miktarı aşıyor.");
+            }
+        }
+    }
+
+    public static void ApplyShipment(SalesOrder? order, Guid productId, int quantity)
+    {
+        if (order is null)
+        {
+            return;
+        }
+
+        var remaining = quantity;
+        foreach (var orderItem in order.Items.Where(x => x.ProductId == productId).OrderBy(x => x.Id))
+        {
+            var available = orderItem.Quantity - orderItem.ShippedQuantity;
+            var applied = Math.Min(available, remaining);
+            orderItem.ShippedQuantity += applied;
+            remaining -= applied;
+
+            if (remaining == 0)
+            {
+                return;
+            }
+        }
+    }
+
+    public static void RefreshShipmentStatus(SalesOrder? order)
+    {
+        if (order is null)
+        {
+            return;
+        }
+
+        order.Status = order.Items.All(x => x.ShippedQuantity >= x.Quantity)
+            ? SalesOrderStatus.Shipped
+            : SalesOrderStatus.PartiallyShipped;
+    }
+
+    public static void EnsureCanReturn(SalesOrder? order, IReadOnlyList<(Product Product, int Quantity)> items)
+    {
+        if (order is null)
+        {
+            return;
+        }
+
+        if (order.Status is SalesOrderStatus.Draft or SalesOrderStatus.Cancelled)
+        {
+            throw new AppProblemException(409, "sales_order_not_returnable", "Sipariş iade almaya uygun durumda değil.");
+        }
+
+        foreach (var item in items)
+        {
+            var returnable = order.Items
+                .Where(x => x.ProductId == item.Product.Id)
+                .Sum(x => x.ShippedQuantity - x.ReturnedQuantity);
+
+            if (returnable == 0 && order.Items.All(x => x.ProductId != item.Product.Id))
+            {
+                throw new AppProblemException(400, "return_item_not_ordered", "İade kalemi bağlı siparişte bulunmuyor.");
+            }
+
+            if (item.Quantity > returnable)
+            {
+                throw new AppProblemException(400, "return_quantity_exceeds_shipped_remaining", "İade miktarı sevk edilmiş ve iade edilmemiş miktarı aşıyor.");
+            }
+        }
+    }
+
+    public static void ApplyReturn(SalesOrder? order, Guid productId, int quantity)
+    {
+        if (order is null)
+        {
+            return;
+        }
+
+        var remaining = quantity;
+        foreach (var orderItem in order.Items.Where(x => x.ProductId == productId).OrderBy(x => x.Id))
+        {
+            var available = orderItem.ShippedQuantity - orderItem.ReturnedQuantity;
+            var applied = Math.Min(available, remaining);
+            orderItem.ReturnedQuantity += applied;
+            remaining -= applied;
+
+            if (remaining == 0)
+            {
+                return;
+            }
+        }
     }
 }
 
@@ -846,7 +972,7 @@ file static class OperationMapper
 
     private static OperationItemDto ToItemDto(SalesOrderItem item)
     {
-        return new OperationItemDto(item.ProductId, item.Product.Sku, item.Product.Name, item.Quantity);
+        return new OperationItemDto(item.ProductId, item.Product.Sku, item.Product.Name, item.Quantity, item.ShippedQuantity, item.ReturnedQuantity);
     }
 
     private static OperationItemDto ToItemDto(PurchaseRequestItem item)
@@ -866,7 +992,7 @@ file static class OperationMapper
 
     private static object ToSnapshotItem(SalesOrderItem item)
     {
-        return new { item.ProductId, item.Quantity };
+        return new { item.ProductId, item.Quantity, item.ShippedQuantity, item.ReturnedQuantity };
     }
 
     private static object ToSnapshotItem(PurchaseRequestItem item)

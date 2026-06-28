@@ -389,6 +389,16 @@ Operasyon endpointleri satis, tedarik, sevkiyat ve iade akisini yonetir. Tum ope
 
 Siparis olusturmak stok miktarini degistirmez. Stok dusumu sevkiyat olusturuldugunda yapilir.
 
+Siparis durum modeli:
+
+- `Draft`: ileride taslak akislar icin ayrildi.
+- `Pending`: yeni olusturulan ve henuz sevk edilmemis siparis.
+- `PartiallyShipped`: kalemlerden en az biri kismen veya tamamen sevk edildi, ancak siparis tamamen kapanmadi.
+- `Shipped`: tum siparis kalemleri sevk edildi.
+- `Cancelled`: iptal edilmis siparis.
+
+Siparis kalemi cevabinda `quantity`, `shippedQuantity` ve `returnedQuantity` alanlari doner. Siparise bagli sevkiyat olusturulurken her kalem icin `shipment.quantity <= quantity - shippedQuantity` kurali uygulanir. Siparise bagli iade olusturulurken `return.quantity <= shippedQuantity - returnedQuantity` kurali uygulanir. Bagimsiz sevkiyat ve bagimsiz iade akislari siparis kalemi sayaclarini degistirmez.
+
 ### Purchase Requests
 
 `GET /api/v1/purchase-requests`

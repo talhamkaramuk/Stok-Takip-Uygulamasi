@@ -13,7 +13,7 @@ public sealed class SalesOrder : Entity, ITenantScoped
     public string CustomerName { get; set; } = string.Empty;
     public Guid? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }
-    public SalesOrderStatus Status { get; set; } = SalesOrderStatus.Preparing;
+    public SalesOrderStatus Status { get; set; } = SalesOrderStatus.Pending;
     public string? Notes { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public ApplicationUser? CreatedByUser { get; set; }

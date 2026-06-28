@@ -997,9 +997,9 @@ function buildPageMetrics(
     case "orders":
       return [
         { label: "Toplam sipariş", value: data.orders.length.toString(), icon: <ClipboardCheck size={19} /> },
-        { label: "Hazırlanıyor", value: data.orders.filter((order) => order.status === "Preparing").length.toString(), icon: <ClipboardList size={19} /> },
+        { label: "Bekleyen", value: data.orders.filter((order) => order.status === "Pending").length.toString(), icon: <ClipboardList size={19} /> },
+        { label: "Kısmi sevk", value: data.orders.filter((order) => order.status === "PartiallyShipped").length.toString(), icon: <Truck size={19} /> },
         { label: "Sevk edildi", value: data.orders.filter((order) => order.status === "Shipped").length.toString(), icon: <Truck size={19} /> },
-        { label: "Tamamlandı", value: data.orders.filter((order) => order.status === "Completed").length.toString(), icon: <Check size={19} />, tone: "ok" },
         { label: "İptal", value: data.orders.filter((order) => order.status === "Cancelled").length.toString(), icon: <AlertTriangle size={19} />, tone: "warn" }
       ];
     case "purchase":
@@ -1147,7 +1147,7 @@ function DashboardView({
     { label: "İade", value: returns.length, tone: "warning" }
   ];
   const pendingJobs = [
-    { label: "Hazırlanan sipariş", value: orders.filter((order) => order.status === "Preparing").length },
+    { label: "Bekleyen sipariş", value: orders.filter((order) => order.status === "Pending" || order.status === "PartiallyShipped").length },
     { label: "Onay bekleyen alım", value: purchaseRequests.filter((request) => request.status === "PendingApproval").length },
     { label: "Teslim alınacak alım", value: purchaseRequests.filter((request) => request.status === "Approved").length },
     { label: "Kritik stok", value: critical.length }
@@ -2345,18 +2345,23 @@ function ShipmentsView({
   const [form, setForm] = useState({ salesOrderId: "", customerId: "", recipientName: "", productId: "", warehouseId: "", quantity: 1, trackingNumber: "", notes: "" });
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeCustomers = customers.filter((customer) => customer.isActive);
+  const shippableOrders = orders.filter((order) =>
+    order.status !== "Draft" &&
+    order.status !== "Cancelled" &&
+    order.items.some((item) => item.quantity - (item.shippedQuantity ?? 0) > 0));
   const selectedWarehouseId = form.warehouseId || getDefaultWarehouseId(activeWarehouses);
 
   function selectOrder(orderId: string) {
     const order = orders.find((item) => item.id === orderId);
+    const orderItem = order?.items.find((item) => item.quantity - (item.shippedQuantity ?? 0) > 0);
     setForm({
       ...form,
       salesOrderId: orderId,
       customerId: order?.customerId ?? form.customerId,
       recipientName: order?.customerName ?? form.recipientName,
       warehouseId: order?.warehouseId ?? form.warehouseId,
-      productId: order?.items[0]?.productId ?? form.productId,
-      quantity: order?.items[0]?.quantity ?? form.quantity
+      productId: orderItem?.productId ?? form.productId,
+      quantity: orderItem ? orderItem.quantity - (orderItem.shippedQuantity ?? 0) : form.quantity
     });
   }
 
@@ -2407,7 +2412,7 @@ function ShipmentsView({
             Bağlı sipariş
             <select value={form.salesOrderId} onChange={(event) => selectOrder(event.target.value)}>
               <option value="">Bağımsız sevkiyat</option>
-              {orders.map((order) => (
+              {shippableOrders.map((order) => (
                 <option key={order.id} value={order.id}>{order.orderNumber} - {order.customerName}</option>
               ))}
             </select>
@@ -2490,18 +2495,23 @@ function ReturnsView({
   const [form, setForm] = useState({ salesOrderId: "", customerId: "", customerName: "", productId: "", warehouseId: "", quantity: 1, reason: "" });
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeCustomers = customers.filter((customer) => customer.isActive);
+  const returnableOrders = orders.filter((order) =>
+    order.status !== "Draft" &&
+    order.status !== "Cancelled" &&
+    order.items.some((item) => (item.shippedQuantity ?? 0) - (item.returnedQuantity ?? 0) > 0));
   const selectedWarehouseId = form.warehouseId || getDefaultWarehouseId(activeWarehouses);
 
   function selectOrder(orderId: string) {
     const order = orders.find((item) => item.id === orderId);
+    const orderItem = order?.items.find((item) => (item.shippedQuantity ?? 0) - (item.returnedQuantity ?? 0) > 0);
     setForm({
       ...form,
       salesOrderId: orderId,
       customerId: order?.customerId ?? form.customerId,
       customerName: order?.customerName ?? form.customerName,
       warehouseId: order?.warehouseId ?? form.warehouseId,
-      productId: order?.items[0]?.productId ?? form.productId,
-      quantity: order?.items[0]?.quantity ?? form.quantity
+      productId: orderItem?.productId ?? form.productId,
+      quantity: orderItem ? (orderItem.shippedQuantity ?? 0) - (orderItem.returnedQuantity ?? 0) : form.quantity
     });
   }
 
@@ -2551,7 +2561,7 @@ function ReturnsView({
             Bağlı sipariş
             <select value={form.salesOrderId} onChange={(event) => selectOrder(event.target.value)}>
               <option value="">Bağımsız iade</option>
-              {orders.map((order) => (
+              {returnableOrders.map((order) => (
                 <option key={order.id} value={order.id}>{order.orderNumber} - {order.customerName}</option>
               ))}
             </select>
@@ -3885,6 +3895,9 @@ function statusClass(status: string) {
 
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
+    Draft: "Taslak",
+    Pending: "Bekliyor",
+    PartiallyShipped: "Kısmi Sevk Edildi",
     Preparing: "Hazırlanıyor",
     Shipped: "Sevk Edildi",
     Completed: "Tamamlandı",

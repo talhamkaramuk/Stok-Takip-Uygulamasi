@@ -2,8 +2,9 @@ namespace STOKIO.Domain.Enums;
 
 public enum SalesOrderStatus
 {
-    Preparing = 1,
-    Shipped = 2,
-    Completed = 3,
-    Cancelled = 4
+    Draft = 1,
+    Pending = 2,
+    PartiallyShipped = 3,
+    Shipped = 4,
+    Cancelled = 5
 }
