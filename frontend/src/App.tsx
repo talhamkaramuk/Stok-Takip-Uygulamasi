@@ -5,6 +5,7 @@ import {
   Boxes,
   Building2,
   Camera,
+  ChevronDown,
   Check,
   ClipboardCheck,
   ClipboardList,
@@ -12,7 +13,10 @@ import {
   FileSpreadsheet,
   Handshake,
   LogOut,
+  Menu,
   PackagePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RotateCcw,
   RefreshCw,
@@ -21,7 +25,9 @@ import {
   ShieldCheck,
   Tags,
   Truck,
-  Users
+  UserCircle,
+  Users,
+  X
 } from "lucide-react";
 import type { IScannerControls } from "@zxing/browser";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -66,11 +72,19 @@ type TabKey =
   | "stock"
   | "count"
   | "users"
+  | "profile"
   | "reports";
 
 type Notice = {
   type: "success" | "error";
   message: string;
+};
+
+type MetricItem = {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  tone?: "ok" | "warn";
 };
 
 type BarcodeReader = InstanceType<typeof import("@zxing/browser").BrowserMultiFormatReader>;
@@ -127,6 +141,10 @@ const tabMeta: Record<TabKey, { title: string; description: string }> = {
   users: {
     title: "Kullanıcılar",
     description: "Ekip üyelerini ve rol bazlı erişimleri yönetin."
+  },
+  profile: {
+    title: "Profilim",
+    description: "Oturumdaki kullanıcı, rol ve çalışma alanı bilgilerini görüntüleyin."
   },
   reports: {
     title: "Raporlar",
@@ -319,7 +337,17 @@ function Workspace({
   setNotice: (notice: Notice | null) => void;
 }) {
   const sidebarRef = useRef<HTMLElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const [tab, setTab] = useState<TabKey>("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.matchMedia("(max-width: 1040px)").matches;
+  });
+  const [isSidebarDrawerOpen, setIsSidebarDrawerOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -402,6 +430,70 @@ function Workspace({
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const sidebarRailQuery = window.matchMedia("(max-width: 1040px)");
+    const syncSidebarDensity = () => setIsSidebarCollapsed(sidebarRailQuery.matches);
+
+    syncSidebarDensity();
+    sidebarRailQuery.addEventListener("change", syncSidebarDensity);
+
+    return () => {
+      sidebarRailQuery.removeEventListener("change", syncSidebarDensity);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarDrawerOpen) {
+      return undefined;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSidebarDrawerOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isSidebarDrawerOpen]);
+
+  useEffect(() => {
+    if (!isUserMenuOpen) {
+      return undefined;
+    }
+
+    const closeOnOutsideClick = (event: MouseEvent | TouchEvent) => {
+      const menu = userMenuRef.current;
+
+      if (menu && !menu.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("touchstart", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("touchstart", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isUserMenuOpen]);
+
+  useEffect(() => {
     const sidebar = sidebarRef.current;
 
     if (!sidebar) {
@@ -418,15 +510,36 @@ function Workspace({
   function changeTab(nextTab: TabKey) {
     setNotice(null);
     setTab(nextTab);
+    setIsSidebarDrawerOpen(false);
+    setIsUserMenuOpen(false);
+  }
+
+  function handleLogout() {
+    setIsUserMenuOpen(false);
+    onLogout();
   }
 
   async function loadDifferences(countId: string) {
     setDifferences(await api.listCountDifferences(countId));
   }
 
-  const totalStock = products.reduce((sum, product) => sum + product.currentStock, 0);
-  const activeProducts = products.filter((product) => product.isActive).length;
   const page = tabMeta[tab];
+  const pageMetrics = buildPageMetrics(tab, {
+    products,
+    categories,
+    customers,
+    suppliers,
+    warehouses,
+    warehouseStock,
+    critical,
+    movements,
+    orders,
+    purchaseRequests,
+    shipments,
+    returns,
+    activeCount,
+    users
+  });
   const initials = user.fullName
     .split(" ")
     .filter(Boolean)
@@ -434,16 +547,52 @@ function Workspace({
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
+  const sidebarClasses = [
+    "app-shell",
+    isSidebarCollapsed ? "sidebar-collapsed" : "",
+    isSidebarDrawerOpen ? "sidebar-drawer-open" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar" ref={sidebarRef}>
+    <main className={sidebarClasses}>
+      <button
+        className="sidebar-backdrop"
+        type="button"
+        aria-label="Menüyü kapat"
+        onClick={() => setIsSidebarDrawerOpen(false)}
+      />
+
+      <aside className="sidebar" id="main-sidebar" ref={sidebarRef}>
         <div className="brand-row">
-          <div className="brand-mark compact">
-            <Boxes size={20} />
+          <div className="sidebar-brand">
+            <div className="brand-mark compact">
+              <Boxes size={20} />
+            </div>
+            <div className="brand-copy">
+              <strong>STOKIO</strong>
+              <span>Inventory OS</span>
+            </div>
           </div>
-          <div className="brand-copy">
-            <strong>STOKIO</strong>
-            <span>Inventory OS</span>
+
+          <div className="sidebar-controls">
+            <button
+              className="sidebar-icon-action sidebar-collapse-toggle"
+              type="button"
+              aria-label={isSidebarCollapsed ? "Menüyü genişlet" : "Menüyü daralt"}
+              onClick={() => setIsSidebarCollapsed((value) => !value)}
+            >
+              {isSidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
+            <button
+              className="sidebar-icon-action sidebar-close"
+              type="button"
+              aria-label="Menüyü kapat"
+              onClick={() => setIsSidebarDrawerOpen(false)}
+            >
+              <X size={18} />
+            </button>
           </div>
         </div>
 
@@ -468,25 +617,89 @@ function Workspace({
           <TabButton active={tab === "reports"} onClick={() => changeTab("reports")} icon={<BarChart3 size={18} />} label="Raporlar" />
         </nav>
 
-        <button className="ghost-action logout" onClick={onLogout} type="button">
-          <LogOut size={17} />
-          Çıkış
-        </button>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
-          <div className="tenant-context">
-            <span className="eyebrow">Çalışma alanı</span>
-            <strong>{user.tenantSlug}</strong>
+          <div className="topbar-title">
+            <button
+              className="sidebar-menu-button"
+              type="button"
+              aria-label="Menüyü aç"
+              aria-controls="main-sidebar"
+              aria-expanded={isSidebarDrawerOpen}
+              onClick={() => setIsSidebarDrawerOpen(true)}
+            >
+              <Menu size={19} />
+            </button>
+            <div className="tenant-context">
+              <span className="eyebrow">Çalışma alanı</span>
+              <strong>{user.tenantSlug}</strong>
+            </div>
           </div>
           <div className="topbar-actions">
-            <div className="user-chip" aria-label="Aktif kullanıcı">
-              <span>{initials || "ST"}</span>
-              <div>
-                <strong>{user.fullName}</strong>
-                <small>{user.role}</small>
-              </div>
+            <div className="user-menu" ref={userMenuRef}>
+              <button
+                className="user-chip"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={isUserMenuOpen}
+                onClick={() => setIsUserMenuOpen((value) => !value)}
+              >
+                <span className="user-avatar">{initials || "ST"}</span>
+                <div className="user-chip-copy">
+                  <strong>{user.fullName}</strong>
+                  <small>{user.role}</small>
+                </div>
+                <ChevronDown size={15} className={isUserMenuOpen ? "chevron-open" : ""} />
+              </button>
+
+              {isUserMenuOpen && (
+                <div className="user-dropdown" role="menu">
+                  <div className="user-dropdown-header">
+                    <span className="user-avatar large">{initials || "ST"}</span>
+                    <div>
+                      <strong>{user.fullName}</strong>
+                      <small>{user.email}</small>
+                    </div>
+                  </div>
+
+                  <div className="user-dropdown-meta">
+                    <span>
+                      <ShieldCheck size={15} />
+                      {user.role}
+                    </span>
+                    <span>
+                      <Building2 size={15} />
+                      {user.tenantSlug}
+                    </span>
+                  </div>
+
+                  <div className="user-dropdown-section">
+                    <button type="button" role="menuitem" onClick={() => changeTab("profile")}>
+                      <UserCircle size={17} />
+                      <span>
+                        <strong>Profilim</strong>
+                        <small>Hesap ve oturum bilgileri</small>
+                      </span>
+                    </button>
+                    {user.role === "Owner" && (
+                      <button type="button" role="menuitem" onClick={() => changeTab("users")}>
+                        <Users size={17} />
+                        <span>
+                          <strong>Kullanıcı yönetimi</strong>
+                          <small>Ekip ve rol erişimleri</small>
+                        </span>
+                      </button>
+                    )}
+                  </div>
+
+                  <button className="user-dropdown-logout" type="button" role="menuitem" onClick={handleLogout}>
+                    <LogOut size={17} />
+                    Çıkış yap
+                  </button>
+                </div>
+              )}
             </div>
             <button className="ghost-action" onClick={() => void refresh()} type="button">
               <RefreshCw size={17} className={loading ? "spin" : ""} />
@@ -509,13 +722,13 @@ function Workspace({
 
         {notice && <NoticeBox notice={notice} />}
 
-        <section className="metric-grid">
-          <Metric label="Aktif ürün" value={activeProducts.toString()} icon={<PackagePlus size={19} />} />
-          <Metric label="Toplam stok" value={totalStock.toString()} icon={<Boxes size={19} />} />
-          <Metric label="Sipariş" value={orders.length.toString()} icon={<ClipboardCheck size={19} />} />
-          <Metric label="Sevkiyat" value={shipments.length.toString()} icon={<Truck size={19} />} />
-          <Metric label="Kritik stok" value={critical.length.toString()} icon={<AlertTriangle size={19} />} tone={critical.length > 0 ? "warn" : "ok"} />
-        </section>
+        {pageMetrics.length > 0 && (
+          <section className="metric-grid">
+            {pageMetrics.map((metric) => (
+              <Metric key={metric.label} {...metric} />
+            ))}
+          </section>
+        )}
 
         {tab === "dashboard" && (
           <DashboardView
@@ -549,62 +762,6 @@ function Workspace({
             setNotice={setNotice}
           />
         )}
-        {tab === "orders" && (
-          <OrdersView
-            api={api}
-            products={products}
-            warehouses={warehouses}
-            customers={customers}
-            orders={orders}
-            onChanged={() => void refresh()}
-            setNotice={setNotice}
-          />
-        )}
-        {tab === "purchase" && (
-          <PurchaseRequestsView
-            api={api}
-            products={products}
-            warehouses={warehouses}
-            suppliers={suppliers}
-            purchaseRequests={purchaseRequests}
-            onChanged={() => void refresh()}
-            setNotice={setNotice}
-          />
-        )}
-        {tab === "shipments" && (
-          <ShipmentsView
-            api={api}
-            products={products}
-            warehouses={warehouses}
-            customers={customers}
-            orders={orders}
-            shipments={shipments}
-            onChanged={() => void refresh()}
-            setNotice={setNotice}
-          />
-        )}
-        {tab === "returns" && (
-          <ReturnsView
-            api={api}
-            products={products}
-            warehouses={warehouses}
-            customers={customers}
-            orders={orders}
-            returns={returns}
-            onChanged={() => void refresh()}
-            setNotice={setNotice}
-          />
-        )}
-        {tab === "warehouses" && (
-          <WarehousesView
-            api={api}
-            products={products}
-            warehouses={warehouses}
-            warehouseStock={warehouseStock}
-            onChanged={() => void refresh()}
-            setNotice={setNotice}
-          />
-        )}
         {tab === "customers" && (
           <CustomersView
             api={api}
@@ -617,6 +774,62 @@ function Workspace({
           <SuppliersView
             api={api}
             suppliers={suppliers}
+            onChanged={() => void refresh()}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "orders" && (
+          <OrdersView
+            api={api}
+            orders={orders}
+            products={products}
+            warehouses={warehouses}
+            customers={customers}
+            onChanged={() => void refresh()}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "purchase" && (
+          <PurchaseRequestsView
+            api={api}
+            purchaseRequests={purchaseRequests}
+            products={products}
+            warehouses={warehouses}
+            suppliers={suppliers}
+            onChanged={() => void refresh()}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "shipments" && (
+          <ShipmentsView
+            api={api}
+            shipments={shipments}
+            orders={orders}
+            products={products}
+            warehouses={warehouses}
+            customers={customers}
+            onChanged={() => void refresh()}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "returns" && (
+          <ReturnsView
+            api={api}
+            returns={returns}
+            orders={orders}
+            products={products}
+            warehouses={warehouses}
+            customers={customers}
+            onChanged={() => void refresh()}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "warehouses" && (
+          <WarehousesView
+            api={api}
+            warehouses={warehouses}
+            warehouseStock={warehouseStock}
+            products={products}
             onChanged={() => void refresh()}
             setNotice={setNotice}
           />
@@ -654,6 +867,7 @@ function Workspace({
             setNotice={setNotice}
           />
         )}
+        {tab === "profile" && <ProfileView user={user} />}
         {tab === "reports" && (
           <ReportsView
             api={api}
@@ -666,6 +880,227 @@ function Workspace({
         )}
       </section>
     </main>
+  );
+}
+
+function ProfileView({ user }: { user: AuthResponse["user"] }) {
+  return (
+    <div className="content-grid">
+      <section className="tool-panel profile-panel">
+        <div className="section-title">
+          <UserCircle size={19} />
+          <h2>Hesap bilgileri</h2>
+        </div>
+
+        <div className="profile-summary">
+          <span className="user-avatar xlarge">
+            {user.fullName
+              .split(" ")
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part[0]?.toUpperCase())
+              .join("") || "ST"}
+          </span>
+          <div>
+            <h2>{user.fullName}</h2>
+            <p>{user.email}</p>
+          </div>
+        </div>
+
+        <div className="profile-grid">
+          <div className="profile-field">
+            <span>Kullanıcı ID</span>
+            <strong>{user.id}</strong>
+          </div>
+          <div className="profile-field">
+            <span>Rol</span>
+            <strong>{user.role}</strong>
+          </div>
+          <div className="profile-field">
+            <span>Tenant</span>
+            <strong>{user.tenantSlug}</strong>
+          </div>
+          <div className="profile-field">
+            <span>Tenant ID</span>
+            <strong>{user.tenantId}</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function buildPageMetrics(
+  tab: TabKey,
+  data: {
+    products: Product[];
+    categories: Category[];
+    customers: Customer[];
+    suppliers: Supplier[];
+    warehouses: Warehouse[];
+    warehouseStock: WarehouseStock[];
+    critical: CriticalStock[];
+    movements: StockMovement[];
+    orders: SalesOrder[];
+    purchaseRequests: PurchaseRequest[];
+    shipments: Shipment[];
+    returns: ReturnRequest[];
+    activeCount: InventoryCount | null;
+    users: ManagedUser[];
+  }
+): MetricItem[] {
+  const activeProducts = data.products.filter((product) => product.isActive).length;
+  const totalStock = data.products.reduce((sum, product) => sum + product.currentStock, 0);
+  const stockIn = data.movements.filter((movement) => movement.type === "In" || movement.type === "TransferIn").length;
+  const stockOut = data.movements.filter((movement) => movement.type === "Out" || movement.type === "TransferOut").length;
+  const barcodedProducts = data.products.filter((product) => product.barcodes.length > 0).length;
+  const activeWarehouses = data.warehouses.filter((warehouse) => warehouse.isActive).length;
+
+  switch (tab) {
+    case "dashboard":
+      return [
+        { label: "Aktif ürün", value: activeProducts.toString(), icon: <PackagePlus size={19} /> },
+        { label: "Toplam stok", value: totalStock.toString(), icon: <Boxes size={19} /> },
+        { label: "Sipariş", value: data.orders.length.toString(), icon: <ClipboardCheck size={19} /> },
+        { label: "Sevkiyat", value: data.shipments.length.toString(), icon: <Truck size={19} /> },
+        { label: "Kritik stok", value: data.critical.length.toString(), icon: <AlertTriangle size={19} />, tone: data.critical.length > 0 ? "warn" : "ok" }
+      ];
+    case "products":
+      return [
+        { label: "Aktif ürün", value: activeProducts.toString(), icon: <PackagePlus size={19} /> },
+        { label: "Barkodlu ürün", value: barcodedProducts.toString(), icon: <ScanLine size={19} /> },
+        { label: "Kategori", value: data.categories.length.toString(), icon: <Tags size={19} /> },
+        { label: "Toplam stok", value: totalStock.toString(), icon: <Boxes size={19} /> },
+        { label: "Kritik stok", value: data.critical.length.toString(), icon: <AlertTriangle size={19} />, tone: data.critical.length > 0 ? "warn" : "ok" }
+      ];
+    case "customers":
+      return [
+        { label: "Toplam müşteri", value: data.customers.length.toString(), icon: <Users size={19} /> },
+        { label: "Aktif müşteri", value: data.customers.filter((customer) => customer.isActive).length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Pasif müşteri", value: data.customers.filter((customer) => !customer.isActive).length.toString(), icon: <AlertTriangle size={19} /> }
+      ];
+    case "suppliers":
+      return [
+        { label: "Toplam tedarikçi", value: data.suppliers.length.toString(), icon: <Handshake size={19} /> },
+        { label: "Aktif tedarikçi", value: data.suppliers.filter((supplier) => supplier.isActive).length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Pasif tedarikçi", value: data.suppliers.filter((supplier) => !supplier.isActive).length.toString(), icon: <AlertTriangle size={19} /> }
+      ];
+    case "orders":
+      return [
+        { label: "Toplam sipariş", value: data.orders.length.toString(), icon: <ClipboardCheck size={19} /> },
+        { label: "Hazırlanıyor", value: data.orders.filter((order) => order.status === "Preparing").length.toString(), icon: <ClipboardList size={19} /> },
+        { label: "Sevk edildi", value: data.orders.filter((order) => order.status === "Shipped").length.toString(), icon: <Truck size={19} /> },
+        { label: "Tamamlandı", value: data.orders.filter((order) => order.status === "Completed").length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "İptal", value: data.orders.filter((order) => order.status === "Cancelled").length.toString(), icon: <AlertTriangle size={19} />, tone: "warn" }
+      ];
+    case "purchase":
+      return [
+        { label: "Toplam talep", value: data.purchaseRequests.length.toString(), icon: <Download size={19} /> },
+        { label: "Onay bekliyor", value: data.purchaseRequests.filter((request) => request.status === "PendingApproval").length.toString(), icon: <ClipboardList size={19} /> },
+        { label: "Onaylandı", value: data.purchaseRequests.filter((request) => request.status === "Approved").length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Teslim alındı", value: data.purchaseRequests.filter((request) => request.status === "Received").length.toString(), icon: <Boxes size={19} /> },
+        { label: "İptal", value: data.purchaseRequests.filter((request) => request.status === "Cancelled").length.toString(), icon: <AlertTriangle size={19} />, tone: "warn" }
+      ];
+    case "shipments":
+      return [
+        { label: "Toplam sevkiyat", value: data.shipments.length.toString(), icon: <Truck size={19} /> },
+        { label: "Tamamlandı", value: data.shipments.filter((shipment) => shipment.status === "Completed").length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "İptal", value: data.shipments.filter((shipment) => shipment.status === "Cancelled").length.toString(), icon: <AlertTriangle size={19} />, tone: "warn" },
+        { label: "Sevk edilen adet", value: data.shipments.reduce((sum, shipment) => sum + shipment.totalQuantity, 0).toString(), icon: <Boxes size={19} /> }
+      ];
+    case "returns":
+      return [
+        { label: "Toplam iade", value: data.returns.length.toString(), icon: <RotateCcw size={19} /> },
+        { label: "Teslim alındı", value: data.returns.filter((item) => item.status === "Received").length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Reddedildi", value: data.returns.filter((item) => item.status === "Rejected").length.toString(), icon: <AlertTriangle size={19} />, tone: "warn" },
+        { label: "İade adedi", value: data.returns.reduce((sum, item) => sum + item.totalQuantity, 0).toString(), icon: <Boxes size={19} /> }
+      ];
+    case "warehouses":
+      return [
+        { label: "Aktif depo", value: activeWarehouses.toString(), icon: <Boxes size={19} /> },
+        { label: "Varsayılan depo", value: data.warehouses.filter((warehouse) => warehouse.isDefault).length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Depo stoku", value: data.warehouseStock.reduce((sum, item) => sum + item.quantity, 0).toString(), icon: <PackagePlus size={19} /> },
+        { label: "Kritik depo satırı", value: data.warehouseStock.filter((item) => item.isCritical).length.toString(), icon: <AlertTriangle size={19} />, tone: data.warehouseStock.some((item) => item.isCritical) ? "warn" : "ok" }
+      ];
+    case "stock":
+      return [
+        { label: "Hareket", value: data.movements.length.toString(), icon: <ClipboardList size={19} /> },
+        { label: "Giriş", value: stockIn.toString(), icon: <Download size={19} />, tone: "ok" },
+        { label: "Çıkış", value: stockOut.toString(), icon: <Truck size={19} /> },
+        { label: "Sayım düzeltme", value: data.movements.filter((movement) => movement.type === "CountCorrection").length.toString(), icon: <ScanLine size={19} /> }
+      ];
+    case "count":
+      return [
+        { label: "Sayım durumu", value: data.activeCount?.status === "Open" ? "Açık" : "Kapalı", icon: <ScanLine size={19} />, tone: data.activeCount?.status === "Open" ? "ok" : undefined },
+        { label: "Sayılan ürün", value: (data.activeCount?.itemCount ?? 0).toString(), icon: <Boxes size={19} /> },
+        { label: "Fark", value: (data.activeCount?.differenceCount ?? 0).toString(), icon: <AlertTriangle size={19} />, tone: (data.activeCount?.differenceCount ?? 0) > 0 ? "warn" : "ok" },
+        { label: "Barkodlu ürün", value: barcodedProducts.toString(), icon: <ScanLine size={19} /> }
+      ];
+    case "users":
+      return [
+        { label: "Toplam kullanıcı", value: data.users.length.toString(), icon: <Users size={19} /> },
+        { label: "Aktif kullanıcı", value: data.users.filter((user) => user.isActive).length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Yönetici", value: data.users.filter((user) => user.role === "Owner" || user.role === "Manager").length.toString(), icon: <ShieldCheck size={19} /> }
+      ];
+    default:
+      return [];
+  }
+}
+
+function usePagination<T>(items: T[], pageSize = 8) {
+  const [page, setPage] = useState(1);
+  const totalCount = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = totalCount === 0 ? 0 : (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
+
+  useEffect(() => {
+    setPage((value) => Math.min(Math.max(value, 1), totalPages));
+  }, [totalPages]);
+
+  return {
+    items: items.slice(startIndex, endIndex),
+    page: currentPage,
+    pageSize,
+    totalCount,
+    totalPages,
+    startIndex,
+    endIndex,
+    setPage
+  };
+}
+
+function PaginationControls({
+  page,
+  totalPages,
+  totalCount,
+  startIndex,
+  endIndex,
+  onPageChange
+}: {
+  page: number;
+  totalPages: number;
+  totalCount: number;
+  startIndex: number;
+  endIndex: number;
+  onPageChange: (page: number) => void;
+}) {
+  return (
+    <div className="pagination-bar">
+      <span className="pagination-info">
+        {totalCount === 0 ? "Kayıt yok" : `${startIndex + 1}-${endIndex} / ${totalCount} kayıt`}
+      </span>
+      <div className="pagination-buttons" aria-label="Sayfalama">
+        <button className="ghost-action compact-action" type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Önceki
+        </button>
+        <span>{page} / {totalPages}</span>
+        <button className="ghost-action compact-action" type="button" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          Sonraki
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -711,6 +1146,7 @@ function DashboardView({
   const warehouseBars = buildWarehouseBars(warehouses, warehouseStock);
   const topProducts = buildTopOperationProducts(orders, purchaseRequests, shipments, returns);
   const recentOperations = buildRecentOperations(orders, purchaseRequests, shipments, returns);
+  const recentOperationPagination = usePagination(recentOperations);
   const activeCustomers = customers.filter((customer) => customer.isActive).length;
   const activeSuppliers = suppliers.filter((supplier) => supplier.isActive).length;
   const stockIn = stockFlow.reduce((sum, point) => sum + point.inbound, 0);
@@ -771,7 +1207,7 @@ function DashboardView({
         <HorizontalBars rows={warehouseBars} />
       </section>
 
-      <section className="tool-panel">
+      <section className="tool-panel dashboard-span-2">
         <div className="section-title">
           <PackagePlus size={19} />
           <h2>Operasyondaki ürünler</h2>
@@ -812,7 +1248,7 @@ function DashboardView({
               </tr>
             </thead>
             <tbody>
-              {recentOperations.map((item) => (
+              {recentOperationPagination.items.map((item) => (
                 <tr key={`${item.type}-${item.id}`}>
                   <td>{item.type}</td>
                   <td>{item.number}</td>
@@ -825,6 +1261,14 @@ function DashboardView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={recentOperationPagination.page}
+          totalPages={recentOperationPagination.totalPages}
+          totalCount={recentOperationPagination.totalCount}
+          startIndex={recentOperationPagination.startIndex}
+          endIndex={recentOperationPagination.endIndex}
+          onPageChange={recentOperationPagination.setPage}
+        />
       </section>
 
       <section className="tool-panel">
@@ -950,6 +1394,7 @@ function ProductsView({
     return [product.sku, product.name, product.categoryName ?? "", ...product.barcodes]
       .some((value) => value.toLowerCase().includes(term));
   });
+  const productPagination = usePagination(filteredProducts);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -1051,7 +1496,7 @@ function ProductsView({
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map((product) => (
+              {productPagination.items.map((product) => (
                 <tr key={product.id}>
                   <td>{product.sku}</td>
                   <td>{product.name}</td>
@@ -1067,6 +1512,14 @@ function ProductsView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={productPagination.page}
+          totalPages={productPagination.totalPages}
+          totalCount={productPagination.totalCount}
+          startIndex={productPagination.startIndex}
+          endIndex={productPagination.endIndex}
+          onPageChange={productPagination.setPage}
+        />
       </section>
     </div>
   );
@@ -1084,6 +1537,7 @@ function CategoriesView({
   setNotice: (notice: Notice | null) => void;
 }) {
   const [name, setName] = useState("");
+  const categoryPagination = usePagination(categories);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -1132,7 +1586,7 @@ function CategoriesView({
               </tr>
             </thead>
             <tbody>
-              {categories.map((category) => (
+              {categoryPagination.items.map((category) => (
                 <tr key={category.id}>
                   <td>{category.name}</td>
                   <td>{category.productCount}</td>
@@ -1146,6 +1600,14 @@ function CategoriesView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={categoryPagination.page}
+          totalPages={categoryPagination.totalPages}
+          totalCount={categoryPagination.totalCount}
+          startIndex={categoryPagination.startIndex}
+          endIndex={categoryPagination.endIndex}
+          onPageChange={categoryPagination.setPage}
+        />
       </section>
     </div>
   );
@@ -1176,6 +1638,7 @@ function CustomersView({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCustomerForm);
+  const customerPagination = usePagination(customers);
 
   function edit(customer: Customer) {
     setEditingId(customer.id);
@@ -1323,7 +1786,7 @@ function CustomersView({
               </tr>
             </thead>
             <tbody>
-              {customers.map((customer) => (
+              {customerPagination.items.map((customer) => (
                 <tr key={customer.id}>
                   <td>{customer.code}</td>
                   <td>{customer.name}</td>
@@ -1342,6 +1805,14 @@ function CustomersView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={customerPagination.page}
+          totalPages={customerPagination.totalPages}
+          totalCount={customerPagination.totalCount}
+          startIndex={customerPagination.startIndex}
+          endIndex={customerPagination.endIndex}
+          onPageChange={customerPagination.setPage}
+        />
       </section>
     </div>
   );
@@ -1372,6 +1843,7 @@ function SuppliersView({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptySupplierForm);
+  const supplierPagination = usePagination(suppliers);
 
   function edit(supplier: Supplier) {
     setEditingId(supplier.id);
@@ -1519,7 +1991,7 @@ function SuppliersView({
               </tr>
             </thead>
             <tbody>
-              {suppliers.map((supplier) => (
+              {supplierPagination.items.map((supplier) => (
                 <tr key={supplier.id}>
                   <td>{supplier.code}</td>
                   <td>{supplier.name}</td>
@@ -1538,6 +2010,14 @@ function SuppliersView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={supplierPagination.page}
+          totalPages={supplierPagination.totalPages}
+          totalCount={supplierPagination.totalCount}
+          startIndex={supplierPagination.startIndex}
+          endIndex={supplierPagination.endIndex}
+          onPageChange={supplierPagination.setPage}
+        />
       </section>
     </div>
   );
@@ -1683,6 +2163,7 @@ function PurchaseRequestsView({
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeSuppliers = suppliers.filter((supplier) => supplier.isActive);
   const selectedWarehouseId = form.warehouseId || getDefaultWarehouseId(activeWarehouses);
+  const requestPagination = usePagination(purchaseRequests);
 
   function selectSupplier(supplierId: string) {
     const supplier = activeSuppliers.find((item) => item.id === supplierId);
@@ -1798,7 +2279,7 @@ function PurchaseRequestsView({
               </tr>
             </thead>
             <tbody>
-              {purchaseRequests.map((request) => (
+              {requestPagination.items.map((request) => (
                 <tr key={request.id}>
                   <td>{request.requestNumber}</td>
                   <td>{request.supplierName}</td>
@@ -1820,6 +2301,14 @@ function PurchaseRequestsView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={requestPagination.page}
+          totalPages={requestPagination.totalPages}
+          totalCount={requestPagination.totalCount}
+          startIndex={requestPagination.startIndex}
+          endIndex={requestPagination.endIndex}
+          onPageChange={requestPagination.setPage}
+        />
       </section>
     </div>
   );
@@ -2123,6 +2612,8 @@ function OperationTable({
   icon: ReactNode;
   rows: Array<{ id: string; number: string; party: string; warehouse: string; status: string; quantity: number; date: string }>;
 }) {
+  const rowPagination = usePagination(rows);
+
   return (
     <section className="tool-panel">
       <div className="section-title">
@@ -2142,7 +2633,7 @@ function OperationTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rowPagination.items.map((row) => (
               <tr key={row.id}>
                 <td>{row.number}</td>
                 <td>{row.party}</td>
@@ -2155,6 +2646,14 @@ function OperationTable({
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        page={rowPagination.page}
+        totalPages={rowPagination.totalPages}
+        totalCount={rowPagination.totalCount}
+        startIndex={rowPagination.startIndex}
+        endIndex={rowPagination.endIndex}
+        onPageChange={rowPagination.setPage}
+      />
     </section>
   );
 }
@@ -2187,6 +2686,8 @@ function WarehousesView({
     quantity: 1,
     reason: ""
   });
+  const warehousePagination = usePagination(warehouses);
+  const warehouseStockPagination = usePagination(warehouseStock);
 
   async function createWarehouse(event: FormEvent) {
     event.preventDefault();
@@ -2338,7 +2839,7 @@ function WarehousesView({
                 </tr>
               </thead>
               <tbody>
-                {warehouses.map((warehouse) => (
+                {warehousePagination.items.map((warehouse) => (
                   <tr key={warehouse.id}>
                     <td>{warehouse.code}</td>
                     <td>{warehouse.name}</td>
@@ -2354,6 +2855,14 @@ function WarehousesView({
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            page={warehousePagination.page}
+            totalPages={warehousePagination.totalPages}
+            totalCount={warehousePagination.totalCount}
+            startIndex={warehousePagination.startIndex}
+            endIndex={warehousePagination.endIndex}
+            onPageChange={warehousePagination.setPage}
+          />
         </section>
 
         <section className="tool-panel">
@@ -2372,7 +2881,7 @@ function WarehousesView({
                 </tr>
               </thead>
               <tbody>
-                {warehouseStock.map((item) => (
+                {warehouseStockPagination.items.map((item) => (
                   <tr key={`${item.warehouseId}-${item.productId}`}>
                     <td>{item.warehouseCode}</td>
                     <td>{item.sku}</td>
@@ -2385,6 +2894,14 @@ function WarehousesView({
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            page={warehouseStockPagination.page}
+            totalPages={warehouseStockPagination.totalPages}
+            totalCount={warehouseStockPagination.totalCount}
+            startIndex={warehouseStockPagination.startIndex}
+            endIndex={warehouseStockPagination.endIndex}
+            onPageChange={warehouseStockPagination.setPage}
+          />
         </section>
       </div>
     </div>
@@ -2408,6 +2925,7 @@ function UsersView({
     password: "StrongPass123",
     role: "Staff" as "Manager" | "Staff"
   });
+  const userPagination = usePagination(users);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -2472,7 +2990,7 @@ function UsersView({
               </tr>
             </thead>
             <tbody>
-              {users.map((managedUser) => (
+              {userPagination.items.map((managedUser) => (
                 <tr key={managedUser.id}>
                   <td>{managedUser.fullName}</td>
                   <td>{managedUser.email}</td>
@@ -2487,6 +3005,14 @@ function UsersView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={userPagination.page}
+          totalPages={userPagination.totalPages}
+          totalCount={userPagination.totalCount}
+          startIndex={userPagination.startIndex}
+          endIndex={userPagination.endIndex}
+          onPageChange={userPagination.setPage}
+        />
       </section>
     </div>
   );
@@ -2657,6 +3183,7 @@ function CountView({
   const productsWithBarcodes = useMemo(
     () => products.filter((product) => product.isActive && product.barcodes.length > 0),
     [products]);
+  const differencePagination = usePagination(differences);
 
   useEffect(() => {
     if (warehouseId && !isActiveWarehouseId(activeWarehouses, warehouseId)) {
@@ -2848,7 +3375,7 @@ function CountView({
               </tr>
             </thead>
             <tbody>
-              {differences.map((item) => (
+              {differencePagination.items.map((item) => (
                 <tr key={item.productId}>
                   <td>{item.sku}</td>
                   <td>{item.expectedQuantity}</td>
@@ -2861,6 +3388,14 @@ function CountView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={differencePagination.page}
+          totalPages={differencePagination.totalPages}
+          totalCount={differencePagination.totalCount}
+          startIndex={differencePagination.startIndex}
+          endIndex={differencePagination.endIndex}
+          onPageChange={differencePagination.setPage}
+        />
       </section>
     </div>
   );
@@ -2938,6 +3473,9 @@ function ReportsView({
   activeCount: InventoryCount | null;
   setNotice: (notice: Notice | null) => void;
 }) {
+  const movementPagination = usePagination(movements);
+  const consistencyPagination = usePagination(consistency);
+
   async function exportFile(path: string, fileName: string) {
     try {
       await api.downloadExport(path, fileName);
@@ -3015,7 +3553,7 @@ function ReportsView({
               </tr>
             </thead>
             <tbody>
-              {movements.slice(0, 15).map((movement) => (
+              {movementPagination.items.map((movement) => (
                 <tr key={movement.id}>
                   <td>{movement.sku}</td>
                   <td>{movement.type}</td>
@@ -3026,6 +3564,14 @@ function ReportsView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={movementPagination.page}
+          totalPages={movementPagination.totalPages}
+          totalCount={movementPagination.totalCount}
+          startIndex={movementPagination.startIndex}
+          endIndex={movementPagination.endIndex}
+          onPageChange={movementPagination.setPage}
+        />
       </section>
       </div>
 
@@ -3046,7 +3592,7 @@ function ReportsView({
               </tr>
             </thead>
             <tbody>
-              {consistency.map((item) => (
+              {consistencyPagination.items.map((item) => (
                 <tr key={item.productId}>
                   <td>{item.sku}</td>
                   <td>{item.productName}</td>
@@ -3062,6 +3608,14 @@ function ReportsView({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          page={consistencyPagination.page}
+          totalPages={consistencyPagination.totalPages}
+          totalCount={consistencyPagination.totalCount}
+          startIndex={consistencyPagination.startIndex}
+          endIndex={consistencyPagination.endIndex}
+          onPageChange={consistencyPagination.setPage}
+        />
       </section>
     </div>
   );
