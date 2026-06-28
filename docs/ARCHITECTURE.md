@@ -22,11 +22,20 @@ Tenant izolasyonu iki seviyede uygulanır:
 
 Stok modeli iki seviyelidir:
 
-- `Product.CurrentStock` toplam stok bakiyesini geriye uyumlu ve hızlı okuma için tutar.
-- `WarehouseStock` depo/lokasyon bazlı stok kırılımını tutar.
+- `StockMovement` append-only stok defteridir ve uzun vadede authoritative kayıt kaynağıdır.
+- `WarehouseStock` depo/lokasyon bazlı stok bakiyesi projection'ıdır.
+- `Product.CurrentStock` toplam stok bakiyesini geriye uyumlu ve hızlı okuma için tutan projection alanıdır.
 - Normal stok hareketleri ilgili depo bakiyesini ve toplam ürün stok bakiyesini birlikte günceller.
 - Depolar arası transfer toplam ürün stokunu değiştirmez; kaynak depoda `TransferOut`, hedef depoda `TransferIn` defter satırı oluşturur.
 - Sayımlar depo bazlıdır; fark uygulama yalnızca seçili depo bakiyesini düzeltir.
+
+Stok yazma stratejisi:
+
+- Manuel stok hareketi, depo transferi, alım teslim alma, sevkiyat, iade ve sayım kapatma açık transaction içinde çalışır.
+- Stok yazan servisler etkilenen ürün ve depo stok satırlarını deterministik sırayla hazırlar.
+- PostgreSQL üzerinde `Products` ve `WarehouseStocks` satırlarına `FOR UPDATE` row lock alınır; lock alındıktan sonra tracked entity değerleri yeniden yüklenir.
+- PostgreSQL dışı providerlarda `Product.Version` ve `WarehouseStock.Version` concurrency token'ları çakışma yakalama için kullanılır.
+- Geçmiş `StockMovement` satırları değiştirilmez; düzeltmeler yeni hareket olarak append edilir.
 
 Operasyon modeli stok defterinin ustune is sureci katmani ekler:
 

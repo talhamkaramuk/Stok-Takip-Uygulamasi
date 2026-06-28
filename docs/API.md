@@ -237,7 +237,7 @@ pageSize
 
 `GET /api/v1/stock/consistency`
 
-Stok yazma işlemleri transaction içinde çalışır. Eş zamanlı stok güncellemesi çakışırsa API `stock_concurrency_conflict` problemiyle 409 döndürür.
+Stok yazma işlemleri transaction içinde çalışır. Kritik stok yazma akışlarında etkilenen ürün ve depo stok satırları deterministik sırayla işlenir. PostgreSQL üzerinde bu satırlara explicit `FOR UPDATE` lock alınır; concurrency token'ları ek güvenlik ağı olarak korunur. Eş zamanlı stok güncellemesi yine çakışırsa API `stock_concurrency_conflict` problemiyle 409 döndürür.
 
 ## Inventory Counts
 

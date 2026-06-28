@@ -57,18 +57,22 @@ Komut
   - çıkış işlemlerinde yeterli stok aranır
   - kritik işlemler request id ile idempotent olmalıdır
   - transaction başlatılır
-  - etkilenen stok satırı kilitlenir veya version-check yapılır
+  - etkilenen ürün ve depo stok satırları deterministik sırayla hazırlanır
+  - PostgreSQL üzerinde etkilenen satırlara `FOR UPDATE` row lock alınır
+  - PostgreSQL dışı providerlarda version-check ile concurrency çakışması yakalanır
   - warehouse stock ve ürün toplam stoku güncellenir
   - stock movement append edilir
   - audit log append edilir
   - commit edilir
 ```
 
-Hedef stok defteri kuralı: stok hareketleri append-only olmalı, düzeltmeler yeni hareket olarak yazılmalı, geçmiş hareketler değiştirilmemelidir.
+Hedef stok defteri kuralı: `StockMovement` append-only authoritative ledger olmalı, düzeltmeler yeni hareket olarak yazılmalı, geçmiş hareketler değiştirilmemelidir. `WarehouseStock` ve `Product.CurrentStock` ledger'dan türeyen balance projection olarak ele alınmalıdır.
 
 Mevcut durum:
 
 - Manuel stok hareketi, alım teslim alma, sevkiyat, iade, sayım kapatma ve depo transferi transaction içinde çalışır.
+- Çok satırlı stok operasyonları ürün ve depo stok satırlarını deterministik sırayla işler.
+- PostgreSQL'de stok yazma sırasında `Products` ve `WarehouseStocks` satırları explicit row lock ile kilitlenir.
 - `Product.Version` ve `WarehouseStock.Version` concurrency token olarak kullanılır.
 - Kritik stok yazma işlemleri `Idempotency-Key` header'ını destekler.
 - Concurrency çakışmaları `stock_concurrency_conflict` koduyla 409 olarak döner.

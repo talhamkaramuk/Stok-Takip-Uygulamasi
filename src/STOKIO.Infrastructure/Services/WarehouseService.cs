@@ -204,6 +204,11 @@ public sealed class WarehouseService(
 
             var fromStock = await stockLedger.GetOrCreateStockAsync(product, request.FromWarehouseId, ct);
             var toStock = await stockLedger.GetOrCreateStockAsync(product, request.ToWarehouseId, ct);
+            var transferStocks = new[] { fromStock, toStock }
+                .OrderBy(x => x.WarehouseId)
+                .ThenBy(x => x.ProductId)
+                .ToArray();
+            await stockLedger.LockForStockWriteAsync([product], transferStocks, ct);
             if (fromStock.WarehouseId == toStock.WarehouseId)
             {
                 throw new AppProblemException(400, "same_warehouse_transfer", "Source and target warehouses must be different.");

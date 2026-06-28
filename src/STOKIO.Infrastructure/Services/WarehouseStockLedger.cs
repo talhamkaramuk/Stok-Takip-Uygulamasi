@@ -8,6 +8,10 @@ namespace STOKIO.Infrastructure.Services;
 
 public sealed class WarehouseStockLedger(StokioDbContext dbContext, ICurrentTenant currentTenant)
 {
+    private bool UsesPostgresRowLocks =>
+        dbContext.Database.IsRelational() &&
+        dbContext.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
     public async Task<Warehouse> ResolveWarehouseAsync(Guid? warehouseId, CancellationToken cancellationToken)
     {
         EnsureTenant();
@@ -99,6 +103,93 @@ public sealed class WarehouseStockLedger(StokioDbContext dbContext, ICurrentTena
         };
         dbContext.WarehouseStocks.Add(stock);
         return stock;
+    }
+
+    public async Task LockForStockWriteAsync(
+        IReadOnlyCollection<Product> products,
+        IReadOnlyCollection<WarehouseStock> warehouseStocks,
+        CancellationToken cancellationToken)
+    {
+        EnsureTenant();
+
+        if (!UsesPostgresRowLocks)
+        {
+            return;
+        }
+
+        if (products.Count == 0 && warehouseStocks.Count == 0)
+        {
+            return;
+        }
+
+        var hasNewLockTargets = dbContext.ChangeTracker.Entries()
+            .Any(x => x.State == EntityState.Added && x.Entity is Warehouse or WarehouseStock);
+        if (hasNewLockTargets)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var productIds = products
+            .Select(x => x.Id)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToArray();
+        if (productIds.Length > 0)
+        {
+            var lockedProducts = await dbContext.Products
+                .FromSqlInterpolated($"""
+                    SELECT *
+                    FROM "Products"
+                    WHERE "TenantId" = {currentTenant.TenantId}
+                      AND "Id" = ANY({productIds})
+                    ORDER BY "Id"
+                    FOR UPDATE
+                    """)
+                .IgnoreQueryFilters()
+                .ToListAsync(cancellationToken);
+
+            if (lockedProducts.Count != productIds.Length)
+            {
+                throw new AppProblemException(409, "stock_lock_product_missing", "One or more stock product rows could not be locked.");
+            }
+
+            foreach (var product in products.OrderBy(x => x.Id))
+            {
+                await dbContext.Entry(product).ReloadAsync(cancellationToken);
+            }
+        }
+
+        var stockIds = warehouseStocks
+            .Select(x => x.Id)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToArray();
+        if (stockIds.Length == 0)
+        {
+            return;
+        }
+
+        var lockedStocks = await dbContext.WarehouseStocks
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "WarehouseStocks"
+                WHERE "TenantId" = {currentTenant.TenantId}
+                  AND "Id" = ANY({stockIds})
+                ORDER BY "WarehouseId", "ProductId"
+                FOR UPDATE
+                """)
+            .IgnoreQueryFilters()
+            .ToListAsync(cancellationToken);
+
+        if (lockedStocks.Count != stockIds.Length)
+        {
+            throw new AppProblemException(409, "stock_lock_balance_missing", "One or more warehouse stock rows could not be locked.");
+        }
+
+        foreach (var stock in warehouseStocks.OrderBy(x => x.WarehouseId).ThenBy(x => x.ProductId))
+        {
+            await dbContext.Entry(stock).ReloadAsync(cancellationToken);
+        }
     }
 
     public async Task SeedProductIfMissingAsync(Product product, CancellationToken cancellationToken)

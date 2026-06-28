@@ -189,19 +189,22 @@ public sealed class PurchaseRequestService(
             purchaseRequest.Status = PurchaseRequestStatus.Received;
             purchaseRequest.ApprovedAt ??= clock.UtcNow;
             purchaseRequest.ReceivedAt = clock.UtcNow;
-            foreach (var item in purchaseRequest.Items)
+            var receivedItems = purchaseRequest.Items
+                .OrderBy(x => x.ProductId)
+                .Select(x => (x.Product, x.Quantity))
+                .ToList();
+            var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, receivedItems, purchaseRequest.WarehouseId, ct);
+            foreach (var item in receivedItems)
             {
-                await OperationStock.ApplyAsync(
+                OperationStock.ApplyPrepared(
                     dbContext,
                     currentTenant,
                     currentUser,
-                    stockLedger,
                     item.Product,
-                    purchaseRequest.WarehouseId,
+                    warehouseStocks[item.Product.Id],
                     StockMovementType.In,
                     item.Quantity,
-                    $"Purchase request received: {purchaseRequest.RequestNumber}",
-                    ct);
+                    $"Purchase request received: {purchaseRequest.RequestNumber}");
             }
 
             auditWriter.AddSnapshot("purchase_request.received", nameof(PurchaseRequest), purchaseRequest.Id, null, OperationMapper.PurchaseSnapshot(purchaseRequest));
@@ -303,6 +306,7 @@ public sealed class ShipmentService(
             }
 
             var items = await OperationStock.ResolveItemsAsync(dbContext, request.Items, ct);
+            var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, items, warehouse.Id, ct);
             var customerId = request.CustomerId ?? order?.CustomerId;
             var customer = await OperationParties.ResolveCustomerAsync(dbContext, customerId, ct);
             var shipment = new Shipment
@@ -323,17 +327,15 @@ public sealed class ShipmentService(
 
             foreach (var item in items)
             {
-                await OperationStock.ApplyAsync(
+                OperationStock.ApplyPrepared(
                     dbContext,
                     currentTenant,
                     currentUser,
-                    stockLedger,
                     item.Product,
-                    warehouse.Id,
+                    warehouseStocks[item.Product.Id],
                     StockMovementType.Out,
                     item.Quantity,
-                    $"Shipment created: {shipment.ShipmentNumber}",
-                    ct);
+                    $"Shipment created: {shipment.ShipmentNumber}");
 
                 shipment.Items.Add(new ShipmentItem
                 {
@@ -448,6 +450,7 @@ public sealed class ReturnRequestService(
             }
 
             var items = await OperationStock.ResolveItemsAsync(dbContext, request.Items, ct);
+            var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, items, warehouse.Id, ct);
             var customerId = request.CustomerId ?? order?.CustomerId;
             var customer = await OperationParties.ResolveCustomerAsync(dbContext, customerId, ct);
             var returnRequest = new ReturnRequest
@@ -467,17 +470,15 @@ public sealed class ReturnRequestService(
 
             foreach (var item in items)
             {
-                await OperationStock.ApplyAsync(
+                OperationStock.ApplyPrepared(
                     dbContext,
                     currentTenant,
                     currentUser,
-                    stockLedger,
                     item.Product,
-                    warehouse.Id,
+                    warehouseStocks[item.Product.Id],
                     StockMovementType.In,
                     item.Quantity,
-                    $"Return received: {returnRequest.ReturnNumber}",
-                    ct);
+                    $"Return received: {returnRequest.ReturnNumber}");
 
                 returnRequest.Items.Add(new ReturnRequestItem
                 {
@@ -641,6 +642,7 @@ file static class OperationStock
         var normalizedItems = requestItems
             .GroupBy(x => x.ProductId)
             .Select(x => new { ProductId = x.Key, Quantity = x.Sum(i => i.Quantity) })
+            .OrderBy(x => x.ProductId)
             .ToList();
         var productIds = normalizedItems.Select(x => x.ProductId).ToList();
         var products = await dbContext.Products
@@ -669,7 +671,51 @@ file static class OperationStock
         string reason,
         CancellationToken cancellationToken)
     {
-        var warehouseStock = await stockLedger.GetOrCreateStockAsync(product, warehouseId, cancellationToken);
+        var warehouseStocks = await PrepareStocksForWriteAsync(stockLedger, [(product, quantity)], warehouseId, cancellationToken);
+        ApplyPrepared(
+            dbContext,
+            currentTenant,
+            currentUser,
+            product,
+            warehouseStocks[product.Id],
+            type,
+            quantity,
+            reason);
+    }
+
+    public static async Task<IReadOnlyDictionary<Guid, WarehouseStock>> PrepareStocksForWriteAsync(
+        WarehouseStockLedger stockLedger,
+        IReadOnlyList<(Product Product, int Quantity)> items,
+        Guid? warehouseId,
+        CancellationToken cancellationToken)
+    {
+        var orderedItems = items
+            .OrderBy(x => x.Product.Id)
+            .ToList();
+        var warehouseStocks = new Dictionary<Guid, WarehouseStock>();
+        foreach (var item in orderedItems)
+        {
+            warehouseStocks[item.Product.Id] = await stockLedger.GetOrCreateStockAsync(item.Product, warehouseId, cancellationToken);
+        }
+
+        await stockLedger.LockForStockWriteAsync(
+            orderedItems.Select(x => x.Product).ToList(),
+            warehouseStocks.Values.ToList(),
+            cancellationToken);
+
+        return warehouseStocks;
+    }
+
+    public static void ApplyPrepared(
+        StokioDbContext dbContext,
+        ICurrentTenant currentTenant,
+        ICurrentUser currentUser,
+        Product product,
+        WarehouseStock warehouseStock,
+        StockMovementType type,
+        int quantity,
+        string reason)
+    {
         var previous = warehouseStock.Quantity;
         var next = type switch
         {

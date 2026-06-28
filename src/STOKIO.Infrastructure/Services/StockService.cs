@@ -48,6 +48,7 @@ public sealed class StockService(
             }
 
             var warehouseStock = await stockLedger.GetOrCreateStockAsync(product, request.WarehouseId, ct);
+            await stockLedger.LockForStockWriteAsync([product], [warehouseStock], ct);
             var previous = warehouseStock.Quantity;
             var next = request.Type switch
             {

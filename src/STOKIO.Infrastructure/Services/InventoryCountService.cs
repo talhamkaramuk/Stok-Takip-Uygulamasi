@@ -129,9 +129,24 @@ public sealed class InventoryCountService(
 
             if (request.ApplyDifferences)
             {
-                foreach (var item in count.Items.Where(x => x.CountedQuantity != x.ExpectedQuantity))
+                var differenceItems = count.Items
+                    .Where(x => x.CountedQuantity != x.ExpectedQuantity)
+                    .OrderBy(x => x.ProductId)
+                    .ToList();
+                var warehouseStocks = new Dictionary<Guid, WarehouseStock>();
+                foreach (var item in differenceItems)
                 {
-                    var warehouseStock = await stockLedger.GetOrCreateStockAsync(item.Product, count.WarehouseId, ct);
+                    warehouseStocks[item.ProductId] = await stockLedger.GetOrCreateStockAsync(item.Product, count.WarehouseId, ct);
+                }
+
+                await stockLedger.LockForStockWriteAsync(
+                    differenceItems.Select(x => x.Product).ToList(),
+                    warehouseStocks.Values.ToList(),
+                    ct);
+
+                foreach (var item in differenceItems)
+                {
+                    var warehouseStock = warehouseStocks[item.ProductId];
                     var previous = warehouseStock.Quantity;
                     var next = item.CountedQuantity;
                     warehouseStock.Quantity = next;
