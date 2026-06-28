@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Stock;
 using STOKIO.Domain.Enums;
@@ -41,18 +43,21 @@ public static class StockEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await stockService.ListMovementsAsync(productId, warehouseId, type, from, to, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapGet("/critical", async (IStockService stockService, CancellationToken cancellationToken) =>
         {
             return Results.Ok(await stockService.ListCriticalStockAsync(cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapGet("/consistency", async (IStockService stockService, CancellationToken cancellationToken) =>
         {
             return Results.Ok(await stockService.CheckConsistencyAsync(cancellationToken));
         })
-        .RequireAuthorization("CatalogManagers");
+        .RequireAuthorization("CatalogManagers")
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         return app;
     }

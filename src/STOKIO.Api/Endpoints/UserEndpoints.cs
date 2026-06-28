@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Users;
 
@@ -20,7 +22,8 @@ public static class UserEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await userService.ListAsync(isActive, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateUserRequest request,
@@ -63,4 +66,3 @@ public static class UserEndpoints
         return app;
     }
 }
-

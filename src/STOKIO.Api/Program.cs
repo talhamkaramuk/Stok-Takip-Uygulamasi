@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -99,26 +98,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-    {
-        var key = context.User.Identity?.IsAuthenticated == true
-            ? context.User.FindFirst("tenant_id")?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "authenticated"
-            : context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
-
-        return RateLimitPartition.GetFixedWindowLimiter(
-            key,
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 180,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-                AutoReplenishment = true
-            });
-    });
-});
+builder.Services.AddStokioRateLimiting();
 
 var app = builder.Build();
 
@@ -135,9 +115,9 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 app.UseCors("Frontend");
-app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<TenantContextMiddleware>();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 if (databaseStartupOptions.EnsureCreated

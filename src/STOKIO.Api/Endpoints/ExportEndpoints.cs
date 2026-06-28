@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 
 namespace STOKIO.Api.Endpoints;
@@ -8,6 +10,7 @@ public static class ExportEndpoints
     {
         var group = app.MapGroup(basePath)
             .RequireAuthorization("AuthenticatedStaff")
+            .RequireRateLimiting(RateLimitPolicyNames.Export)
             .WithTags("Exports");
 
         group.MapGet("/current-stock.xlsx", async (IExportService exportService, CancellationToken cancellationToken) =>

@@ -23,7 +23,16 @@ Tenant kapsamlı entity'ler `ITenantScoped` uygular. EF Core global query filter
 
 ## Rate Limiting
 
-API global fixed-window rate limit uygular. Kimliği doğrulanmış kullanıcılar tenant id üzerinden, anonim kullanıcılar IP üzerinden gruplanır.
+API global tenant/IP bazlı güvenlik ağına ek olarak endpoint türüne göre ayrı rate limit profilleri uygular:
+
+- Login: IP + tenant slug + e-posta kombinasyonuna göre sıkı fixed-window limit ve ek IP limiti
+- Tenant kaydı: IP bazlı daha sıkı fixed-window limit
+- Barkod/sayım scan: tenant + kullanıcı bazlı token bucket burst kontrolü
+- Export: tenant + kullanıcı bazlı düşük fixed-window limit
+- Raporlar: tenant bazlı ayrı fixed-window limit
+- Genel okuma endpointleri: tenant bazlı daha geniş fixed-window limit
+
+Rate limiter authentication ve tenant context oluşturulduktan sonra çalışır; bu nedenle authenticated endpointlerde partition key tenant claim'lerinden üretilir.
 
 ## Audit Log
 

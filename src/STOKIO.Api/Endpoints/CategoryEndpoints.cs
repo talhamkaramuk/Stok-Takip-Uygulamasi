@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Categories;
 
@@ -20,7 +22,8 @@ public static class CategoryEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await categoryService.ListAsync(isActive, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateCategoryRequest request,
@@ -66,4 +69,3 @@ public static class CategoryEndpoints
         return app;
     }
 }
-

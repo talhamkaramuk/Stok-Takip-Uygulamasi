@@ -79,7 +79,9 @@ Mevcut durum:
 
 ## P2 - Güvenlik Sertleştirme
 
-- Endpoint bazlı rate limit profilleri eklenmelidir: auth, export, barcode/scan ve rapor endpointleri ayrı limitlenmelidir.
+- Endpoint bazlı rate limit profilleri uygulanır: login, tenant kaydı, export, barcode/scan, rapor ve genel okuma endpointleri ayrı limitlenir.
+- Tenant kaydı akışına yüksek riskli deploymentlarda CAPTCHA veya benzeri abuse-prevention katmanı eklenmelidir.
+- Export işlemleri büyüdükçe düşük limit korunmalı ve arka plan export queue tasarımına taşınmalıdır.
 - JWT anahtar rotasyon prosedürü tanımlanmalıdır.
 - Token saklama stratejisi tekrar değerlendirilmelidir.
 - Audit log görüntüleme ekranı eklenmelidir.

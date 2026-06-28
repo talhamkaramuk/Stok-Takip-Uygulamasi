@@ -30,6 +30,19 @@ Bu header şu işlemlerde desteklenir:
 - `POST /api/v1/returns`
 - `POST /api/v1/counts/{id}/close`
 
+## Rate Limits
+
+API rate limitleri endpoint türüne göre ayrılmıştır:
+
+| Endpoint türü | Partition | Profil |
+| --- | --- | --- |
+| `POST /auth/login` | IP + tenant slug + e-posta, ayrıca IP | Sıkı fixed-window |
+| `POST /auth/register-tenant` | IP | Daha sıkı fixed-window |
+| `POST /counts/{id}/items/scan` | Tenant + kullanıcı | Token bucket, burst kontrollü |
+| `/exports/*` | Tenant + kullanıcı | Düşük fixed-window |
+| `/reports/*` | Tenant | Ayrı fixed-window |
+| Genel okuma endpointleri | Tenant | Daha geniş fixed-window |
+
 ## Authentication
 
 `POST /api/v1/auth/register-tenant`

@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Products;
 
@@ -23,12 +25,14 @@ public static class ProductEndpoints
         {
             var products = await productService.ListAsync(search, categoryId, isActive, page, pageSize, cancellationToken);
             return Results.Ok(products);
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapGet("/{id:guid}", async (Guid id, IProductService productService, CancellationToken cancellationToken) =>
         {
             return Results.Ok(await productService.GetAsync(id, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateProductRequest request,

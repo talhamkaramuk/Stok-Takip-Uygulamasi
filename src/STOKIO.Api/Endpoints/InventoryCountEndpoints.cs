@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Counts;
 
@@ -31,7 +33,8 @@ public static class InventoryCountEndpoints
         group.MapGet("/{id:guid}", async (Guid id, IInventoryCountService countService, CancellationToken cancellationToken) =>
         {
             return Results.Ok(await countService.GetAsync(id, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/{id:guid}/items/scan", async (
             Guid id,
@@ -47,7 +50,8 @@ public static class InventoryCountEndpoints
             }
 
             return Results.Ok(await countService.ScanAsync(id, request, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.BarcodeScan);
 
         group.MapPost("/{id:guid}/close", async (
             Guid id,
@@ -64,7 +68,8 @@ public static class InventoryCountEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await countService.GetDifferencesAsync(id, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         return app;
     }

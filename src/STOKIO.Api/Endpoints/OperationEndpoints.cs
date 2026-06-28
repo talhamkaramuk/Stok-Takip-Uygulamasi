@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Operations;
 using STOKIO.Domain.Enums;
@@ -21,7 +23,8 @@ public static class OperationEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateSalesOrderRequest request,
@@ -56,7 +59,8 @@ public static class OperationEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreatePurchaseRequestRequest request,
@@ -109,7 +113,8 @@ public static class OperationEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateShipmentRequest request,
@@ -145,7 +150,8 @@ public static class OperationEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateReturnRequestRequest request,

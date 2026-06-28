@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Warehouses;
 
@@ -20,7 +22,8 @@ public static class WarehouseEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await warehouseService.ListAsync(isActive, page, pageSize, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/", async (
             CreateWarehouseRequest request,
@@ -70,7 +73,8 @@ public static class WarehouseEndpoints
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await warehouseService.ListStockAsync(warehouseId, productId, cancellationToken));
-        });
+        })
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         group.MapPost("/transfers", async (
             StockTransferRequest request,

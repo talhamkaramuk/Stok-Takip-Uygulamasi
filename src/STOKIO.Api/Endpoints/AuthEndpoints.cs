@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Auth;
 
@@ -26,11 +28,14 @@ public static class AuthEndpoints
             var response = await authService.RegisterTenantAsync(request, cancellationToken);
             return Results.Created($"{basePath}/me", response);
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting(RateLimitPolicyNames.AuthRegisterTenant);
 
         group.MapPost("/login", async (
             LoginRequest request,
             IValidator<LoginRequest> validator,
+            AuthRateLimiter authRateLimiter,
+            HttpContext httpContext,
             IAuthService authService,
             CancellationToken cancellationToken) =>
         {
@@ -40,9 +45,19 @@ public static class AuthEndpoints
                 return validation.ToHttpResult();
             }
 
+            if (!await authRateLimiter.TryAcquireLoginAsync(httpContext, request, cancellationToken))
+            {
+                return Results.Problem(
+                    type: "https://stokio.local/problems/auth_rate_limited",
+                    title: "auth_rate_limited",
+                    detail: "Too many login attempts. Please try again later.",
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
             return Results.Ok(await authService.LoginAsync(request, cancellationToken));
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting(RateLimitPolicyNames.AuthLoginIp);
 
         group.MapGet("/me", (ICurrentTenant currentTenant, ICurrentUser currentUser) =>
         {
@@ -55,7 +70,8 @@ public static class AuthEndpoints
                 role = currentUser.Role
             });
         })
-        .RequireAuthorization();
+        .RequireAuthorization()
+        .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
         return app;
     }

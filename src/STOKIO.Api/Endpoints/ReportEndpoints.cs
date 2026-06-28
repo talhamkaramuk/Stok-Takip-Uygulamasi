@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 
 namespace STOKIO.Api.Endpoints;
@@ -8,6 +10,7 @@ public static class ReportEndpoints
     {
         var group = app.MapGroup(basePath)
             .RequireAuthorization("AuthenticatedStaff")
+            .RequireRateLimiting(RateLimitPolicyNames.Report)
             .WithTags("Reports");
 
         group.MapGet("/current-stock", async (IReportService reportService, CancellationToken cancellationToken) =>
