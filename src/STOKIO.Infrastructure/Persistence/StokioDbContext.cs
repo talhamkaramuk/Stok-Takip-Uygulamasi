@@ -325,8 +325,10 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
             entity.Property(x => x.Key).HasMaxLength(160).IsRequired();
             entity.Property(x => x.OperationName).HasMaxLength(160).IsRequired();
             entity.Property(x => x.RequestHash).HasMaxLength(88).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
             entity.Property(x => x.ResourceType).HasMaxLength(80).IsRequired();
             entity.Property(x => x.ResourceId).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ResponseSnapshotJson).HasColumnType("jsonb");
             entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
     }

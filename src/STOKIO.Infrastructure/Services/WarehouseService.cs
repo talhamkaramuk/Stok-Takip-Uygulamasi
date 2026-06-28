@@ -187,14 +187,15 @@ public sealed class WarehouseService(
             request.Quantity,
             Reason = reason
         };
-        var existing = await Idempotency.FindExistingAsync(operationName, requestFingerprint, cancellationToken);
-        if (existing is not null)
-        {
-            return await FindTransferDtoByIdempotencyRecordAsync(existing, cancellationToken);
-        }
-
         return await TransactionRunner.RunAsync(async ct =>
         {
+            var existing = await Idempotency.TryReserveAsync(operationName, requestFingerprint, ct);
+            if (existing is not null)
+            {
+                return Idempotency.TryReadResponseSnapshot<StockTransferDto>(existing)
+                    ?? await FindTransferDtoByIdempotencyRecordAsync(existing, ct);
+            }
+
             var product = await dbContext.Products.SingleOrDefaultAsync(x => x.Id == request.ProductId && x.IsActive, ct);
             if (product is null)
             {
@@ -254,10 +255,9 @@ public sealed class WarehouseService(
                 new { product.Id, product.Sku, FromWarehouseId = fromStock.WarehouseId, ToWarehouseId = toStock.WarehouseId, request.Quantity },
                 null,
                 new { OutMovementId = outMovement.Id, InMovementId = inMovement.Id });
-            Idempotency.AddCompleted(operationName, requestFingerprint, nameof(StockMovement), transferGroupId.ToString());
             await dbContext.SaveChangesAsync(ct);
 
-            return new StockTransferDto(
+            var dto = new StockTransferDto(
                 transferGroupId,
                 product.Id,
                 product.Sku,
@@ -268,6 +268,13 @@ public sealed class WarehouseService(
                 toStock.Warehouse.Name,
                 request.Quantity,
                 outMovement.CreatedAt);
+
+            if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(StockMovement), transferGroupId.ToString(), dto, ct))
+            {
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return dto;
         }, cancellationToken);
     }
 

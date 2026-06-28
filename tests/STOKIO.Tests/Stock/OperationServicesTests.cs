@@ -125,6 +125,88 @@ public sealed class OperationServicesTests
         Assert.Single(dbContext.StockMovements.Where(x => x.Type == StockMovementType.Out && x.ProductId == product.Id));
     }
 
+    [Fact]
+    public async Task PurchaseReceive_ReturnsExistingReceipt_WhenIdempotencyKeyIsReused()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var clock = new TestClock();
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var purchaseService = new PurchaseRequestService(
+            dbContext,
+            tenant,
+            user,
+            clock,
+            ledger,
+            auditWriter,
+            new IdempotencyService(dbContext, tenant, new TestIdempotencyKeyAccessor("purchase-receive-1")),
+            new DbTransactionRunner(dbContext));
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "PUR-IDEMP-1",
+            Name = "Purchase Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        var purchase = await purchaseService.CreateAsync(new CreatePurchaseRequestRequest("Supplier", null, null, [new OperationItemRequest(product.Id, 5)]), CancellationToken.None);
+
+        var first = await purchaseService.ReceiveAsync(purchase.Id, CancellationToken.None);
+        var second = await purchaseService.ReceiveAsync(purchase.Id, CancellationToken.None);
+
+        Assert.Equal(first.Id, second.Id);
+        Assert.Equal(PurchaseRequestStatus.Received, second.Status);
+        Assert.Equal(5, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
+        Assert.Single(dbContext.StockMovements.Where(x => x.Type == StockMovementType.In && x.ProductId == product.Id));
+        Assert.Equal(IdempotencyRecordStatus.Completed, Assert.Single(dbContext.IdempotencyRecords).Status);
+    }
+
+    [Fact]
+    public async Task ReturnCreate_ReturnsExistingReturn_WhenIdempotencyKeyIsReused()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var clock = new TestClock();
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var returnService = new ReturnRequestService(
+            dbContext,
+            tenant,
+            user,
+            clock,
+            ledger,
+            auditWriter,
+            new IdempotencyService(dbContext, tenant, new TestIdempotencyKeyAccessor("return-1")),
+            new DbTransactionRunner(dbContext));
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "RET-IDEMP-1",
+            Name = "Return Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        var request = new CreateReturnRequestRequest(null, "Customer", null, "Damaged package", [new OperationItemRequest(product.Id, 2)]);
+
+        var first = await returnService.CreateAsync(request, CancellationToken.None);
+        var second = await returnService.CreateAsync(request, CancellationToken.None);
+
+        Assert.Equal(first.Id, second.Id);
+        Assert.Equal(2, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
+        Assert.Single(dbContext.ReturnRequests);
+        Assert.Single(dbContext.StockMovements.Where(x => x.Type == StockMovementType.In && x.ProductId == product.Id));
+        Assert.Equal(IdempotencyRecordStatus.Completed, Assert.Single(dbContext.IdempotencyRecords).Status);
+    }
+
     private static StokioDbContext CreateDbContext(Guid tenantId)
     {
         var options = new DbContextOptionsBuilder<StokioDbContext>()

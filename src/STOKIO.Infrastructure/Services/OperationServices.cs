@@ -170,14 +170,16 @@ public sealed class PurchaseRequestService(
         OperationGuards.EnsureTenant(currentTenant);
         const string operationName = "purchase_request.receive";
         var requestFingerprint = new { PurchaseRequestId = id };
-        var existing = await Idempotency.FindExistingAsync(operationName, requestFingerprint, cancellationToken);
-        if (existing is not null)
-        {
-            return await FindDtoByIdempotencyRecordAsync(existing, cancellationToken);
-        }
 
         return await TransactionRunner.RunAsync(async ct =>
         {
+            var existing = await Idempotency.TryReserveAsync(operationName, requestFingerprint, ct);
+            if (existing is not null)
+            {
+                return Idempotency.TryReadResponseSnapshot<PurchaseRequestDto>(existing)
+                    ?? await FindDtoByIdempotencyRecordAsync(existing, ct);
+            }
+
             var purchaseRequest = await FindAsync(id, ct);
             if (purchaseRequest.Status is PurchaseRequestStatus.Received or PurchaseRequestStatus.Cancelled)
             {
@@ -203,9 +205,15 @@ public sealed class PurchaseRequestService(
             }
 
             auditWriter.AddSnapshot("purchase_request.received", nameof(PurchaseRequest), purchaseRequest.Id, null, OperationMapper.PurchaseSnapshot(purchaseRequest));
-            Idempotency.AddCompleted(operationName, requestFingerprint, nameof(PurchaseRequest), purchaseRequest.Id.ToString());
             await dbContext.SaveChangesAsync(ct);
-            return OperationMapper.ToDto(purchaseRequest);
+            var dto = OperationMapper.ToDto(purchaseRequest);
+
+            if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(PurchaseRequest), purchaseRequest.Id.ToString(), dto, ct))
+            {
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return dto;
         }, cancellationToken);
     }
 
@@ -275,14 +283,16 @@ public sealed class ShipmentService(
         OperationGuards.EnsureTenant(currentTenant);
         const string operationName = "shipment.create";
         var requestFingerprint = OperationFingerprints.Shipment(request);
-        var existing = await Idempotency.FindExistingAsync(operationName, requestFingerprint, cancellationToken);
-        if (existing is not null)
-        {
-            return await FindDtoByIdempotencyRecordAsync(existing, cancellationToken);
-        }
 
         return await TransactionRunner.RunAsync(async ct =>
         {
+            var existing = await Idempotency.TryReserveAsync(operationName, requestFingerprint, ct);
+            if (existing is not null)
+            {
+                return Idempotency.TryReadResponseSnapshot<ShipmentDto>(existing)
+                    ?? await FindDtoByIdempotencyRecordAsync(existing, ct);
+            }
+
             var warehouse = await stockLedger.ResolveWarehouseAsync(request.WarehouseId, ct);
             var order = request.SalesOrderId.HasValue
                 ? await dbContext.SalesOrders.SingleOrDefaultAsync(x => x.Id == request.SalesOrderId.Value, ct)
@@ -341,9 +351,15 @@ public sealed class ShipmentService(
 
             dbContext.Shipments.Add(shipment);
             auditWriter.AddSnapshot("shipment.created", nameof(Shipment), shipment.Id, null, OperationMapper.ShipmentSnapshot(shipment));
-            Idempotency.AddCompleted(operationName, requestFingerprint, nameof(Shipment), shipment.Id.ToString());
             await dbContext.SaveChangesAsync(ct);
-            return OperationMapper.ToDto(shipment);
+            var dto = OperationMapper.ToDto(shipment);
+
+            if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(Shipment), shipment.Id.ToString(), dto, ct))
+            {
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return dto;
         }, cancellationToken);
     }
 
@@ -412,14 +428,16 @@ public sealed class ReturnRequestService(
         OperationGuards.EnsureTenant(currentTenant);
         const string operationName = "return_request.create";
         var requestFingerprint = OperationFingerprints.Return(request);
-        var existing = await Idempotency.FindExistingAsync(operationName, requestFingerprint, cancellationToken);
-        if (existing is not null)
-        {
-            return await FindDtoByIdempotencyRecordAsync(existing, cancellationToken);
-        }
 
         return await TransactionRunner.RunAsync(async ct =>
         {
+            var existing = await Idempotency.TryReserveAsync(operationName, requestFingerprint, ct);
+            if (existing is not null)
+            {
+                return Idempotency.TryReadResponseSnapshot<ReturnRequestDto>(existing)
+                    ?? await FindDtoByIdempotencyRecordAsync(existing, ct);
+            }
+
             var warehouse = await stockLedger.ResolveWarehouseAsync(request.WarehouseId, ct);
             var order = request.SalesOrderId.HasValue
                 ? await dbContext.SalesOrders.SingleOrDefaultAsync(x => x.Id == request.SalesOrderId.Value, ct)
@@ -472,9 +490,15 @@ public sealed class ReturnRequestService(
 
             dbContext.ReturnRequests.Add(returnRequest);
             auditWriter.AddSnapshot("return_request.created", nameof(ReturnRequest), returnRequest.Id, null, OperationMapper.ReturnSnapshot(returnRequest));
-            Idempotency.AddCompleted(operationName, requestFingerprint, nameof(ReturnRequest), returnRequest.Id.ToString());
             await dbContext.SaveChangesAsync(ct);
-            return OperationMapper.ToDto(returnRequest);
+            var dto = OperationMapper.ToDto(returnRequest);
+
+            if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(ReturnRequest), returnRequest.Id.ToString(), dto, ct))
+            {
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return dto;
         }, cancellationToken);
     }
 

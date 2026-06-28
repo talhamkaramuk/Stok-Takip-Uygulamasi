@@ -291,13 +291,21 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "Key" character varying(160) NOT NULL,
             "OperationName" character varying(160) NOT NULL,
             "RequestHash" character varying(88) NOT NULL,
+            "Status" character varying(32) NOT NULL DEFAULT 'Completed',
             "ResourceType" character varying(80) NOT NULL,
             "ResourceId" character varying(80) NOT NULL,
-            "CompletedAt" timestamp with time zone NOT NULL,
+            "ResponseSnapshotJson" jsonb NULL,
+            "CompletedAt" timestamp with time zone NULL,
+            "ExpiresAt" timestamp with time zone NOT NULL DEFAULT (now() + interval '24 hours'),
             CONSTRAINT "PK_IdempotencyRecords" PRIMARY KEY ("Id"),
             CONSTRAINT "FK_IdempotencyRecords_Tenants_TenantId" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("Id") ON DELETE RESTRICT
         );
 
+        ALTER TABLE "IdempotencyRecords" ADD COLUMN IF NOT EXISTS "Status" character varying(32) NOT NULL DEFAULT 'Completed';
+        ALTER TABLE "IdempotencyRecords" ADD COLUMN IF NOT EXISTS "ResponseSnapshotJson" jsonb;
+        ALTER TABLE "IdempotencyRecords" ADD COLUMN IF NOT EXISTS "CompletedAt" timestamp with time zone;
+        ALTER TABLE "IdempotencyRecords" ALTER COLUMN "CompletedAt" DROP NOT NULL;
+        ALTER TABLE "IdempotencyRecords" ADD COLUMN IF NOT EXISTS "ExpiresAt" timestamp with time zone NOT NULL DEFAULT (now() + interval '24 hours');
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_IdempotencyRecords_TenantId_OperationName_Key" ON "IdempotencyRecords" ("TenantId", "OperationName", "Key");
 
         CREATE TABLE IF NOT EXISTS "Customers" (

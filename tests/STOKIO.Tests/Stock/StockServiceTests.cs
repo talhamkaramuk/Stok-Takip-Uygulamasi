@@ -131,7 +131,11 @@ public sealed class StockServiceTests
         Assert.Equal(first.Id, second.Id);
         Assert.Equal(5, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
         Assert.Single(dbContext.StockMovements.Where(x => x.ProductId == product.Id));
-        Assert.Single(dbContext.IdempotencyRecords);
+        var record = Assert.Single(dbContext.IdempotencyRecords);
+        Assert.Equal(IdempotencyRecordStatus.Completed, record.Status);
+        Assert.NotNull(record.CompletedAt);
+        Assert.NotNull(record.ResponseSnapshotJson);
+        Assert.True(record.ExpiresAt > record.CreatedAt);
     }
 
     [Fact]
@@ -234,6 +238,50 @@ public sealed class StockServiceTests
         Assert.Equal(4, stocks[branchWarehouse.Id]);
         Assert.Contains(dbContext.StockMovements, x => x.Type == StockMovementType.TransferOut && x.WarehouseId == mainWarehouse.Id);
         Assert.Contains(dbContext.StockMovements, x => x.Type == StockMovementType.TransferIn && x.WarehouseId == branchWarehouse.Id);
+    }
+
+    [Fact]
+    public async Task TransferAsync_ReturnsExistingTransfer_WhenIdempotencyKeyIsReused()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var user = new TestCurrentUser();
+        var tenant = new TestCurrentTenant(tenantId);
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var stockService = new StockService(dbContext, tenant, user, ledger, auditWriter);
+        var warehouseService = new WarehouseService(
+            dbContext,
+            tenant,
+            user,
+            ledger,
+            auditWriter,
+            new IdempotencyService(dbContext, tenant, new TestIdempotencyKeyAccessor("transfer-1")),
+            new DbTransactionRunner(dbContext));
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "SKU-TRANSFER-IDEMP-1",
+            Name = "Transferable Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 2
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        await stockService.CreateMovementAsync(new CreateStockMovementRequest(product.Id, StockMovementType.In, 10, "purchase"), CancellationToken.None);
+        var mainWarehouse = dbContext.Warehouses.Single(x => x.IsDefault);
+        var branchWarehouse = await warehouseService.CreateAsync(new CreateWarehouseRequest("BR-IDEMP", "İdempotent Şube", null, false), CancellationToken.None);
+        var request = new StockTransferRequest(product.Id, mainWarehouse.Id, branchWarehouse.Id, 4, "branch replenishment");
+
+        var first = await warehouseService.TransferAsync(request, CancellationToken.None);
+        var second = await warehouseService.TransferAsync(request, CancellationToken.None);
+
+        Assert.Equal(first.TransferGroupId, second.TransferGroupId);
+        Assert.Equal(10, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
+        Assert.Equal(6, dbContext.WarehouseStocks.Single(x => x.ProductId == product.Id && x.WarehouseId == mainWarehouse.Id).Quantity);
+        Assert.Equal(4, dbContext.WarehouseStocks.Single(x => x.ProductId == product.Id && x.WarehouseId == branchWarehouse.Id).Quantity);
+        Assert.Equal(2, dbContext.StockMovements.Count(x => x.TransferGroupId == first.TransferGroupId));
+        Assert.Equal(IdempotencyRecordStatus.Completed, Assert.Single(dbContext.IdempotencyRecords).Status);
     }
 
     private static StokioDbContext CreateDbContext(Guid tenantId)

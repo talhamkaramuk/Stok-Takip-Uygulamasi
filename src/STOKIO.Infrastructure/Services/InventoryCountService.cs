@@ -114,14 +114,16 @@ public sealed class InventoryCountService(
         EnsureTenant();
         const string operationName = "inventory_count.close";
         var requestFingerprint = new { CountId = countId, request.ApplyDifferences };
-        var existing = await Idempotency.FindExistingAsync(operationName, requestFingerprint, cancellationToken);
-        if (existing is not null)
-        {
-            return await FindDtoByIdempotencyRecordAsync(existing, cancellationToken);
-        }
 
         return await TransactionRunner.RunAsync(async ct =>
         {
+            var existing = await Idempotency.TryReserveAsync(operationName, requestFingerprint, ct);
+            if (existing is not null)
+            {
+                return Idempotency.TryReadResponseSnapshot<InventoryCountDto>(existing)
+                    ?? await FindDtoByIdempotencyRecordAsync(existing, ct);
+            }
+
             var count = await FindCountAsync(countId, includeProducts: true, ct);
             EnsureOpen(count);
 
@@ -152,9 +154,15 @@ public sealed class InventoryCountService(
             count.Status = InventoryCountStatus.Closed;
             count.ClosedAt = clock.UtcNow;
             auditWriter.AddSnapshot("inventory_count.closed", nameof(InventoryCount), count.Id, null, CountSnapshot(count), new { request.ApplyDifferences });
-            Idempotency.AddCompleted(operationName, requestFingerprint, nameof(InventoryCount), count.Id.ToString());
             await dbContext.SaveChangesAsync(ct);
-            return ToDto(count);
+            var dto = ToDto(count);
+
+            if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(InventoryCount), count.Id.ToString(), dto, ct))
+            {
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return dto;
         }, cancellationToken);
     }
 

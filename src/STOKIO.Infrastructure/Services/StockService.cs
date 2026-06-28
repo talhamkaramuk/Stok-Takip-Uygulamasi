@@ -29,14 +29,15 @@ public sealed class StockService(
             request.Quantity,
             Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim()
         };
-        var existing = await Idempotency.FindExistingAsync(operationName, requestFingerprint, cancellationToken);
-        if (existing is not null)
-        {
-            return await FindMovementDtoAsync(existing.ResourceId, cancellationToken);
-        }
-
         return await TransactionRunner.RunAsync(async ct =>
         {
+            var existing = await Idempotency.TryReserveAsync(operationName, requestFingerprint, ct);
+            if (existing is not null)
+            {
+                return Idempotency.TryReadResponseSnapshot<StockMovementDto>(existing)
+                    ?? await FindMovementDtoAsync(existing.ResourceId, ct);
+            }
+
             var product = await dbContext.Products.SingleOrDefaultAsync(
                 x => x.Id == request.ProductId && x.IsActive,
                 ct);
@@ -92,10 +93,9 @@ public sealed class StockService(
                 oldValue,
                 new { product.Id, product.Sku, product.Name, product.CurrentStock, WarehouseId = warehouseStock.WarehouseId, WarehouseStock = next },
                 MovementSnapshot(movement));
-            Idempotency.AddCompleted(operationName, requestFingerprint, nameof(StockMovement), movement.Id.ToString());
             await dbContext.SaveChangesAsync(ct);
 
-            return new StockMovementDto(
+            var dto = new StockMovementDto(
                 movement.Id,
                 product.Id,
                 product.Name,
@@ -108,6 +108,13 @@ public sealed class StockService(
                 movement.NewQuantity,
                 movement.Reason,
                 movement.CreatedAt);
+
+            if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(StockMovement), movement.Id.ToString(), dto, ct))
+            {
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return dto;
         }, cancellationToken);
     }
 

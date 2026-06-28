@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Common;
 using STOKIO.Domain.Entities;
+using STOKIO.Domain.Enums;
 using STOKIO.Infrastructure.Persistence;
 
 namespace STOKIO.Infrastructure.Services;
@@ -15,9 +16,10 @@ public sealed class IdempotencyService(
     IIdempotencyKeyAccessor? keyAccessor = null)
 {
     private const int MaxKeyLength = 160;
+    private static readonly TimeSpan ReservationLifetime = TimeSpan.FromHours(24);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<IdempotencyRecord?> FindExistingAsync(
+    public async Task<IdempotencyRecord?> TryReserveAsync(
         string operationName,
         object requestFingerprint,
         CancellationToken cancellationToken)
@@ -28,14 +30,103 @@ public sealed class IdempotencyService(
             return null;
         }
 
+        if (!currentTenant.HasTenant)
+        {
+            throw new AppProblemException(401, "tenant_required", "Tenant context is required.");
+        }
+
+        var requestHash = Hash(requestFingerprint);
+        var existing = await FindExistingRecordAsync(operationName, key, cancellationToken);
+        if (existing is not null)
+        {
+            return ValidateExisting(existing, requestHash);
+        }
+
+        if (dbContext.Database.IsRelational() &&
+            dbContext.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var recordId = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            var expiresAt = now.Add(ReservationLifetime);
+            const string status = nameof(IdempotencyRecordStatus.Started);
+
+            var inserted = await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "IdempotencyRecords" (
+                    "Id",
+                    "CreatedAt",
+                    "UpdatedAt",
+                    "TenantId",
+                    "Key",
+                    "OperationName",
+                    "RequestHash",
+                    "Status",
+                    "ResourceType",
+                    "ResourceId",
+                    "ResponseSnapshotJson",
+                    "CompletedAt",
+                    "ExpiresAt")
+                VALUES (
+                    {recordId},
+                    {now},
+                    NULL,
+                    {currentTenant.TenantId},
+                    {key},
+                    {operationName},
+                    {requestHash},
+                    {status},
+                    '',
+                    '',
+                    NULL,
+                    NULL,
+                    {expiresAt})
+                ON CONFLICT ("TenantId", "OperationName", "Key") DO NOTHING
+                """, cancellationToken);
+
+            if (inserted == 1)
+            {
+                return null;
+            }
+
+            var concurrentRecord = await FindExistingRecordAsync(operationName, key, cancellationToken)
+                ?? throw new AppProblemException(409, "idempotency_reservation_conflict", "Idempotency reservation could not be acquired.");
+
+            return ValidateExisting(concurrentRecord, requestHash);
+        }
+
+        dbContext.IdempotencyRecords.Add(new IdempotencyRecord
+        {
+            TenantId = currentTenant.TenantId,
+            Key = key,
+            OperationName = operationName,
+            RequestHash = requestHash,
+            Status = IdempotencyRecordStatus.Started,
+            ExpiresAt = DateTimeOffset.UtcNow.Add(ReservationLifetime)
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<bool> CompleteAsync<TResponse>(
+        string operationName,
+        object requestFingerprint,
+        string resourceType,
+        string resourceId,
+        TResponse responseSnapshot,
+        CancellationToken cancellationToken)
+    {
+        var key = CurrentKey();
+        if (key is null)
+        {
+            return false;
+        }
+
         var requestHash = Hash(requestFingerprint);
         var record = await dbContext.IdempotencyRecords
-            .AsNoTracking()
             .SingleOrDefaultAsync(x => x.OperationName == operationName && x.Key == key, cancellationToken);
 
         if (record is null)
         {
-            return null;
+            throw new AppProblemException(409, "idempotency_reservation_missing", "Idempotency reservation was not found.");
         }
 
         if (!string.Equals(record.RequestHash, requestHash, StringComparison.Ordinal))
@@ -46,35 +137,61 @@ public sealed class IdempotencyService(
                 "Idempotency key was already used with a different request.");
         }
 
-        return record;
+        record.Status = IdempotencyRecordStatus.Completed;
+        record.ResourceType = resourceType;
+        record.ResourceId = resourceId;
+        record.ResponseSnapshotJson = JsonSerializer.Serialize(responseSnapshot, JsonOptions);
+        record.CompletedAt = DateTimeOffset.UtcNow;
+        return true;
     }
 
-    public void AddCompleted(
-        string operationName,
-        object requestFingerprint,
-        string resourceType,
-        string resourceId)
+    public TResponse? TryReadResponseSnapshot<TResponse>(IdempotencyRecord record)
     {
-        if (!currentTenant.HasTenant)
+        if (string.IsNullOrWhiteSpace(record.ResponseSnapshotJson))
         {
-            throw new AppProblemException(401, "tenant_required", "Tenant context is required.");
+            return default;
         }
 
-        var key = CurrentKey();
-        if (key is null)
+        return JsonSerializer.Deserialize<TResponse>(record.ResponseSnapshotJson, JsonOptions);
+    }
+
+    private async Task<IdempotencyRecord?> FindExistingRecordAsync(
+        string operationName,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.IdempotencyRecords
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OperationName == operationName && x.Key == key, cancellationToken);
+    }
+
+    private static IdempotencyRecord? ValidateExisting(IdempotencyRecord record, string requestHash)
+    {
+        if (!string.Equals(record.RequestHash, requestHash, StringComparison.Ordinal))
         {
-            return;
+            throw new AppProblemException(
+                409,
+                "idempotency_key_conflict",
+                "Idempotency key was already used with a different request.");
         }
 
-        dbContext.IdempotencyRecords.Add(new IdempotencyRecord
+        if (record.Status == IdempotencyRecordStatus.Completed)
         {
-            TenantId = currentTenant.TenantId,
-            Key = key,
-            OperationName = operationName,
-            RequestHash = Hash(requestFingerprint),
-            ResourceType = resourceType,
-            ResourceId = resourceId
-        });
+            return record;
+        }
+
+        if (record.Status == IdempotencyRecordStatus.Started)
+        {
+            throw new AppProblemException(
+                409,
+                "idempotency_key_in_progress",
+                "An operation with the same idempotency key is still in progress. Retry after the first request completes.");
+        }
+
+        throw new AppProblemException(
+            409,
+            "idempotency_key_failed",
+            "Idempotency key is attached to a failed operation.");
     }
 
     private string? CurrentKey()
