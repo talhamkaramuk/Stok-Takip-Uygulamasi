@@ -265,6 +265,14 @@ Stok yazma işlemleri transaction içinde çalışır. Kritik stok yazma akışl
 
 `warehouseId` verilmezse varsayılan depo sayılır. Farklar uygulanırken yalnızca ilgili depo bakiyesi düzeltilir.
 
+Sayim MVP'de snapshot model ile calisir. Sayim baslatildiginda aktif urunler icin beklenen miktar snapshot olarak kaydedilir; sayim kapatma fark hesabinda bu snapshot esas alinir. Sayim acikken ayni depoda herhangi bir stok hareketi olursa `InventoryCountDto` su uyari alanlarini dondurur:
+
+- `hasPostSnapshotMovements`
+- `postSnapshotMovementCount`
+- `lastPostSnapshotMovementAt`
+
+Bu alanlar true/dolu ise UI kullaniciya "sayim baslangicindan sonra stok hareketi olustu" uyarisi gosterir. Sistem bu hareketleri otomatik delta olarak fark hesabina katmaz.
+
 `POST /api/v1/counts/{id}/items/scan`
 
 ```json

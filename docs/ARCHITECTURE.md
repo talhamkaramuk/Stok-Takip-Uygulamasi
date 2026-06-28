@@ -29,6 +29,8 @@ Stok modeli iki seviyelidir:
 - Depolar arası transfer toplam ürün stokunu değiştirmez; kaynak depoda `TransferOut`, hedef depoda `TransferIn` defter satırı oluşturur.
 - Sayımlar depo bazlıdır; fark uygulama yalnızca seçili depo bakiyesini düzeltir.
 
+Sayim MVP'de snapshot model kullanir: baslangictaki `ExpectedQuantity` fark hesabinin esasidir. Sayim acikken ayni depoda herhangi bir stok hareketi olursa API `hasPostSnapshotMovements` uyarisini dondurur; bu hareketler delta olarak otomatik fark hesabina katilmaz.
+
 Stok yazma stratejisi:
 
 - Manuel stok hareketi, depo transferi, alım teslim alma, sevkiyat, iade ve sayım kapatma açık transaction içinde çalışır.

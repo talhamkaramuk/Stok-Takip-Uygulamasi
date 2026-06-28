@@ -158,6 +158,9 @@ export type InventoryCount = {
   closedAt?: string | null;
   itemCount: number;
   differenceCount: number;
+  hasPostSnapshotMovements: boolean;
+  postSnapshotMovementCount: number;
+  lastPostSnapshotMovementAt?: string | null;
 };
 
 export type InventoryCountItem = {

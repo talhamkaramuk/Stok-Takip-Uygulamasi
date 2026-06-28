@@ -250,6 +250,8 @@ export function createApiClient(token: string | null) {
     createCount: (name: string, warehouseId: string | null) =>
       request<InventoryCount>(`${API_PREFIX}/counts`, { method: "POST", body: JSON.stringify({ name, warehouseId }) }),
 
+    getCount: (countId: string) => request<InventoryCount>(`${API_PREFIX}/counts/${countId}`),
+
     scanCountItem: (countId: string, body: { barcode: string; quantity: number }) =>
       request<InventoryCountItem>(`${API_PREFIX}/counts/${countId}/items/scan`, { method: "POST", body: JSON.stringify(body) }),
 

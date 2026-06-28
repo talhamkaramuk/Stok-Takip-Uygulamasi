@@ -37,6 +37,8 @@ Stok etkisi bilinçli olarak iş sürecine bağlıdır. Sipariş ve alım talebi
 
 Alim talebi teslim alma akisi artik tek seferlik tam teslimle sinirli degildir. Onaylanan talepler kismi teslim alinabilir; sistem kalem bazinda `receivedQuantity` tutar ve kalan miktari asan teslimi reddeder.
 
+Sayim akisi MVP'de snapshot model kullanir. Sayim basladiktan sonra ayni depoda herhangi bir stok hareketi olursa arayuz uyari gosterir; farklar yine sayim baslangic snapshot'ina gore yorumlanir.
+
 ## Mimari
 
 ```text

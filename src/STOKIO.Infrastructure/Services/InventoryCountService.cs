@@ -53,14 +53,14 @@ public sealed class InventoryCountService(
         dbContext.InventoryCounts.Add(count);
         auditWriter.AddSnapshot("inventory_count.created", nameof(InventoryCount), count.Id, null, CountSnapshot(count));
         await dbContext.SaveChangesAsync(cancellationToken);
-        return ToDto(count);
+        return await ToDtoAsync(count, cancellationToken);
     }
 
     public async Task<InventoryCountDto> GetAsync(Guid id, CancellationToken cancellationToken)
     {
         EnsureTenant();
         var count = await FindCountAsync(id, includeProducts: false, cancellationToken);
-        return ToDto(count);
+        return await ToDtoAsync(count, cancellationToken);
     }
 
     public async Task<InventoryCountItemDto> ScanAsync(Guid countId, ScanCountItemRequest request, CancellationToken cancellationToken)
@@ -170,7 +170,7 @@ public sealed class InventoryCountService(
             count.ClosedAt = clock.UtcNow;
             auditWriter.AddSnapshot("inventory_count.closed", nameof(InventoryCount), count.Id, null, CountSnapshot(count), new { request.ApplyDifferences });
             await dbContext.SaveChangesAsync(ct);
-            var dto = ToDto(count);
+            var dto = await ToDtoAsync(count, ct);
 
             if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(InventoryCount), count.Id.ToString(), dto, ct))
             {
@@ -221,11 +221,12 @@ public sealed class InventoryCountService(
             throw new AppProblemException(409, "idempotency_resource_invalid", "Idempotency record points to an invalid resource.");
         }
 
-        return ToDto(await FindCountAsync(id, includeProducts: false, cancellationToken));
+        return await ToDtoAsync(await FindCountAsync(id, includeProducts: false, cancellationToken), cancellationToken);
     }
 
-    private static InventoryCountDto ToDto(InventoryCount count)
+    private async Task<InventoryCountDto> ToDtoAsync(InventoryCount count, CancellationToken cancellationToken)
     {
+        var postSnapshotMovements = await GetPostSnapshotMovementSummaryAsync(count, cancellationToken);
         return new InventoryCountDto(
             count.Id,
             count.Name,
@@ -235,7 +236,33 @@ public sealed class InventoryCountService(
             count.StartedAt,
             count.ClosedAt,
             count.Items.Count,
-            count.Items.Count(x => x.CountedQuantity != x.ExpectedQuantity));
+            count.Items.Count(x => x.CountedQuantity != x.ExpectedQuantity),
+            postSnapshotMovements.Count > 0,
+            postSnapshotMovements.Count,
+            postSnapshotMovements.LastMovementAt);
+    }
+
+    private async Task<(int Count, DateTimeOffset? LastMovementAt)> GetPostSnapshotMovementSummaryAsync(
+        InventoryCount count,
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.StockMovements
+            .AsNoTracking()
+            .Where(x =>
+                x.WarehouseId == count.WarehouseId &&
+                x.CreatedAt > count.StartedAt);
+
+        if (count.ClosedAt.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt < count.ClosedAt.Value);
+        }
+
+        var movementCount = await query.CountAsync(cancellationToken);
+        var lastMovementAt = movementCount == 0
+            ? null
+            : await query.MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
+
+        return (movementCount, lastMovementAt);
     }
 
     private static object CountSnapshot(InventoryCount count)

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Dtos.Counts;
+using STOKIO.Application.Dtos.Stock;
 using STOKIO.Domain.Entities;
 using STOKIO.Domain.Enums;
 using STOKIO.Infrastructure.Persistence;
@@ -88,6 +89,77 @@ public sealed class InventoryCountServiceTests
         Assert.Equal(7, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
         Assert.Equal(7, dbContext.WarehouseStocks.Single(x => x.ProductId == product.Id).Quantity);
         Assert.Single(dbContext.StockMovements.Where(x => x.Type == StockMovementType.CountCorrection && x.ProductId == product.Id));
+    }
+
+    [Fact]
+    public async Task GetAsync_Warns_WhenWarehouseMovementOccursAfterSnapshot()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var service = new InventoryCountService(
+            dbContext,
+            tenant,
+            user,
+            new TestClock(),
+            ledger,
+            auditWriter);
+        var stockService = new StockService(dbContext, tenant, user, ledger, auditWriter);
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "SKU-COUNT-WARN-1",
+            Name = "Warning product",
+            CurrentStock = 5,
+            CriticalStockLevel = 1
+        };
+        var countWarehouse = new Warehouse
+        {
+            TenantId = tenantId,
+            Code = "MAIN",
+            Name = "Main warehouse",
+            IsDefault = true
+        };
+        var secondaryWarehouse = new Warehouse
+        {
+            TenantId = tenantId,
+            Code = "SIDE",
+            Name = "Side warehouse",
+            IsDefault = false
+        };
+        dbContext.Products.Add(product);
+        dbContext.Warehouses.Add(countWarehouse);
+        dbContext.Warehouses.Add(secondaryWarehouse);
+        await dbContext.SaveChangesAsync();
+        var count = await service.CreateAsync(new CreateInventoryCountRequest("Daily count", countWarehouse.Id), CancellationToken.None);
+
+        await stockService.CreateMovementAsync(new CreateStockMovementRequest(product.Id, StockMovementType.In, 2, "other warehouse", secondaryWarehouse.Id), CancellationToken.None);
+        var afterOtherWarehouseMovement = await service.GetAsync(count.Id, CancellationToken.None);
+
+        Assert.False(afterOtherWarehouseMovement.HasPostSnapshotMovements);
+        Assert.Equal(0, afterOtherWarehouseMovement.PostSnapshotMovementCount);
+        Assert.Null(afterOtherWarehouseMovement.LastPostSnapshotMovementAt);
+
+        var postSnapshotProduct = new Product
+        {
+            TenantId = tenantId,
+            Sku = "SKU-COUNT-WARN-2",
+            Name = "Post snapshot product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(postSnapshotProduct);
+        await dbContext.SaveChangesAsync();
+
+        await stockService.CreateMovementAsync(new CreateStockMovementRequest(postSnapshotProduct.Id, StockMovementType.In, 1, "same warehouse", count.WarehouseId), CancellationToken.None);
+        var afterCountWarehouseMovement = await service.GetAsync(count.Id, CancellationToken.None);
+
+        Assert.True(afterCountWarehouseMovement.HasPostSnapshotMovements);
+        Assert.Equal(1, afterCountWarehouseMovement.PostSnapshotMovementCount);
+        Assert.NotNull(afterCountWarehouseMovement.LastPostSnapshotMovementAt);
     }
 
     private static StokioDbContext CreateDbContext(Guid tenantId)

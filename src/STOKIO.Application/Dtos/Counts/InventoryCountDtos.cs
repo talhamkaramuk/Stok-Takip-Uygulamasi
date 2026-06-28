@@ -17,7 +17,10 @@ public sealed record InventoryCountDto(
     DateTimeOffset StartedAt,
     DateTimeOffset? ClosedAt,
     int ItemCount,
-    int DifferenceCount);
+    int DifferenceCount,
+    bool HasPostSnapshotMovements,
+    int PostSnapshotMovementCount,
+    DateTimeOffset? LastPostSnapshotMovementAt);
 
 public sealed record InventoryCountItemDto(
     Guid ProductId,

@@ -392,7 +392,8 @@ function Workspace({
         nextOrders,
         nextPurchaseRequests,
         nextShipments,
-        nextReturns
+        nextReturns,
+        nextActiveCount
       ] = await Promise.all([
         api.listProducts(),
         api.listCriticalStock(),
@@ -405,7 +406,8 @@ function Workspace({
         api.listOrders(),
         api.listPurchaseRequests(),
         api.listShipments(),
-        api.listReturns()
+        api.listReturns(),
+        activeCount ? api.getCount(activeCount.id).catch(() => null) : Promise.resolve(null)
       ]);
       setProducts(nextProducts.items);
       setCritical(nextCritical);
@@ -419,6 +421,9 @@ function Workspace({
       setPurchaseRequests(nextPurchaseRequests.items);
       setShipments(nextShipments.items);
       setReturns(nextReturns.items);
+      if (activeCount) {
+        setActiveCount(nextActiveCount);
+      }
 
       if (user.role === "Owner") {
         const nextUsers = await api.listUsers();
@@ -3339,6 +3344,7 @@ function CountView({
       setLastScannedItem(item);
       setBarcode("");
       await loadDifferences(activeCount.id);
+      setActiveCount(await api.getCount(activeCount.id));
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
     }
@@ -3404,6 +3410,13 @@ function CountView({
                 <span><b>Ürün</b>{activeCount.itemCount}</span>
                 <span><b>Fark</b>{activeCount.differenceCount}</span>
               </div>
+              {activeCount.hasPostSnapshotMovements && (
+                <span className="inline-warning">
+                  Sayım başlangıcından sonra bu depoda {activeCount.postSnapshotMovementCount} stok hareketi oluştu
+                  {activeCount.lastPostSnapshotMovementAt ? `; son hareket: ${formatDate(activeCount.lastPostSnapshotMovementAt)}` : ""}.
+                  Farkları snapshot başlangıcına göre yorumlayın.
+                </span>
+              )}
             </div>
 
             <BarcodeScanner onDetect={(value) => void scan(value)} />
