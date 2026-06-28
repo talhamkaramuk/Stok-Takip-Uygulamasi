@@ -34,6 +34,18 @@ public sealed class CreatePurchaseRequestRequestValidator : AbstractValidator<Cr
     }
 }
 
+public sealed class ReceivePurchaseRequestRequestValidator : AbstractValidator<ReceivePurchaseRequestRequest>
+{
+    public ReceivePurchaseRequestRequestValidator()
+    {
+        When(x => x.Items is not null, () =>
+        {
+            RuleFor(x => x.Items).NotEmpty();
+            RuleForEach(x => x.Items!).SetValidator(new OperationItemRequestValidator());
+        });
+    }
+}
+
 public sealed class CreateShipmentRequestValidator : AbstractValidator<CreateShipmentRequest>
 {
     public CreateShipmentRequestValidator()

@@ -165,11 +165,11 @@ public sealed class PurchaseRequestService(
         return OperationMapper.ToDto(purchaseRequest);
     }
 
-    public async Task<PurchaseRequestDto> ReceiveAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<PurchaseRequestDto> ReceiveAsync(Guid id, ReceivePurchaseRequestRequest? request, CancellationToken cancellationToken)
     {
         OperationGuards.EnsureTenant(currentTenant);
         const string operationName = "purchase_request.receive";
-        var requestFingerprint = new { PurchaseRequestId = id };
+        var requestFingerprint = OperationFingerprints.PurchaseReceive(id, request);
 
         return await TransactionRunner.RunAsync(async ct =>
         {
@@ -183,17 +183,23 @@ public sealed class PurchaseRequestService(
             var purchaseRequest = await FindAsync(id, ct);
             if (purchaseRequest.Status is PurchaseRequestStatus.Received or PurchaseRequestStatus.Cancelled)
             {
-                throw new AppProblemException(400, "purchase_request_closed", "Closed purchase requests cannot be received.");
+                throw new AppProblemException(400, "purchase_request_closed", "Kapalı alım talepleri teslim alınamaz.");
             }
 
-            purchaseRequest.Status = PurchaseRequestStatus.Received;
-            purchaseRequest.ApprovedAt ??= clock.UtcNow;
-            purchaseRequest.ReceivedAt = clock.UtcNow;
-            var receivedItems = purchaseRequest.Items
-                .OrderBy(x => x.ProductId)
-                .Select(x => (x.Product, x.Quantity))
+            if (purchaseRequest.Status is not (PurchaseRequestStatus.Approved or PurchaseRequestStatus.PartiallyReceived))
+            {
+                throw new AppProblemException(409, "purchase_request_not_approved", "Alım talebi teslim alınmadan önce onaylanmalıdır.");
+            }
+
+            var receivedLines = OperationPurchaseReceiving.ResolveReceivedLines(purchaseRequest, request);
+            var receivedItems = receivedLines
+                .GroupBy(x => x.Item.ProductId)
+                .Select(x => (x.First().Item.Product, Quantity: x.Sum(i => i.Quantity)))
+                .OrderBy(x => x.Product.Id)
                 .ToList();
             var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, receivedItems, purchaseRequest.WarehouseId, ct);
+
+            purchaseRequest.ApprovedAt ??= clock.UtcNow;
             foreach (var item in receivedItems)
             {
                 OperationStock.ApplyPrepared(
@@ -206,6 +212,18 @@ public sealed class PurchaseRequestService(
                     item.Quantity,
                     $"Purchase request received: {purchaseRequest.RequestNumber}");
             }
+
+            foreach (var line in receivedLines)
+            {
+                line.Item.ReceivedQuantity += line.Quantity;
+            }
+
+            purchaseRequest.Status = purchaseRequest.Items.All(x => x.ReceivedQuantity >= x.Quantity)
+                ? PurchaseRequestStatus.Received
+                : PurchaseRequestStatus.PartiallyReceived;
+            purchaseRequest.ReceivedAt = purchaseRequest.Status == PurchaseRequestStatus.Received
+                ? clock.UtcNow
+                : null;
 
             auditWriter.AddSnapshot("purchase_request.received", nameof(PurchaseRequest), purchaseRequest.Id, null, OperationMapper.PurchaseSnapshot(purchaseRequest));
             await dbContext.SaveChangesAsync(ct);
@@ -718,6 +736,15 @@ file static class OperationNumbers
 
 file static class OperationFingerprints
 {
+    public static object PurchaseReceive(Guid purchaseRequestId, ReceivePurchaseRequestRequest? request)
+    {
+        return new
+        {
+            PurchaseRequestId = purchaseRequestId,
+            Items = request?.Items is null ? null : NormalizeItems(request.Items)
+        };
+    }
+
     public static object Shipment(CreateShipmentRequest request)
     {
         return new
@@ -756,6 +783,77 @@ file static class OperationFingerprints
     }
 
     private sealed record OperationItemFingerprint(Guid ProductId, int Quantity);
+}
+
+file static class OperationPurchaseReceiving
+{
+    public static IReadOnlyList<(PurchaseRequestItem Item, int Quantity)> ResolveReceivedLines(
+        PurchaseRequest request,
+        ReceivePurchaseRequestRequest? receiveRequest)
+    {
+        if (receiveRequest?.Items is null)
+        {
+            var remainingLines = request.Items
+                .OrderBy(x => x.ProductId)
+                .ThenBy(x => x.Id)
+                .Select(x => (Item: x, Quantity: x.Quantity - x.ReceivedQuantity))
+                .Where(x => x.Quantity > 0)
+                .ToList();
+
+            return remainingLines.Count == 0
+                ? throw new AppProblemException(400, "purchase_request_closed", "Alım talebinde teslim alınacak kalan miktar yok.")
+                : remainingLines;
+        }
+
+        var normalizedItems = receiveRequest.Items
+            .GroupBy(x => x.ProductId)
+            .Select(x => new { ProductId = x.Key, Quantity = x.Sum(i => i.Quantity) })
+            .OrderBy(x => x.ProductId)
+            .ToList();
+        if (normalizedItems.Count == 0 || normalizedItems.Any(x => x.Quantity <= 0))
+        {
+            throw new AppProblemException(400, "purchase_receive_items_required", "Teslim alma için en az bir pozitif miktarlı kalem girilmelidir.");
+        }
+
+        var receivedLines = new List<(PurchaseRequestItem Item, int Quantity)>();
+
+        foreach (var item in normalizedItems)
+        {
+            var requestItems = request.Items
+                .Where(x => x.ProductId == item.ProductId)
+                .OrderBy(x => x.Id)
+                .ToList();
+            if (requestItems.Count == 0)
+            {
+                throw new AppProblemException(400, "purchase_receive_item_not_requested", "Teslim alınan ürün alım talebinde bulunmuyor.");
+            }
+
+            var remainingTotal = requestItems.Sum(x => x.Quantity - x.ReceivedQuantity);
+            if (item.Quantity > remainingTotal)
+            {
+                throw new AppProblemException(400, "purchase_receive_quantity_exceeds_remaining", "Teslim alma miktarı talepte kalan miktarı aşıyor.");
+            }
+
+            var remaining = item.Quantity;
+            foreach (var requestItem in requestItems)
+            {
+                var available = requestItem.Quantity - requestItem.ReceivedQuantity;
+                var applied = Math.Min(available, remaining);
+                if (applied > 0)
+                {
+                    receivedLines.Add((requestItem, applied));
+                    remaining -= applied;
+                }
+
+                if (remaining == 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        return receivedLines;
+    }
 }
 
 file static class OperationStock
@@ -977,7 +1075,7 @@ file static class OperationMapper
 
     private static OperationItemDto ToItemDto(PurchaseRequestItem item)
     {
-        return new OperationItemDto(item.ProductId, item.Product.Sku, item.Product.Name, item.Quantity);
+        return new OperationItemDto(item.ProductId, item.Product.Sku, item.Product.Name, item.Quantity, ReceivedQuantity: item.ReceivedQuantity);
     }
 
     private static OperationItemDto ToItemDto(ShipmentItem item)
@@ -997,7 +1095,7 @@ file static class OperationMapper
 
     private static object ToSnapshotItem(PurchaseRequestItem item)
     {
-        return new { item.ProductId, item.Quantity };
+        return new { item.ProductId, item.Quantity, item.ReceivedQuantity };
     }
 
     private static object ToSnapshotItem(ShipmentItem item)

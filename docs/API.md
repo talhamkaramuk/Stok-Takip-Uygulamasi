@@ -424,6 +424,29 @@ Siparis kalemi cevabinda `quantity`, `shippedQuantity` ve `returnedQuantity` ala
 
 `POST /api/v1/purchase-requests/{id}/receive`
 
+Body gonderilmezse alım talebinde kalan tum miktar teslim alınır. Kısmi teslim için body:
+
+```json
+{
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "quantity": 4
+    }
+  ]
+}
+```
+
+Alım talebi durum modeli:
+
+- `PendingApproval`: onay bekleyen talep.
+- `Approved`: onaylandı, henuz teslim alınmadı.
+- `PartiallyReceived`: kalemlerden en az biri kısmen teslim alındı.
+- `Received`: tum kalemler teslim alındı.
+- `Cancelled`: iptal edildi.
+
+Alım talebi kalemi cevabında `quantity` talep edilen miktarı, `receivedQuantity` teslim alınan miktarı ifade eder. Kısmi teslimde `receive.quantity <= quantity - receivedQuantity` kuralı uygulanır. Teslim alma yalnızca `Approved` veya `PartiallyReceived` durumundaki talepler için çalışır.
+
 Alim talebi olusturma ve onaylama stok degistirmez. `receive` cagrisi ilgili depo bakiyesini ve toplam urun stok miktarini artirir.
 
 ### Shipments

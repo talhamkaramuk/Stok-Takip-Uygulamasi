@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.RateLimiting;
 using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
@@ -89,10 +91,21 @@ public static class OperationEndpoints
 
         group.MapPost("/{id:guid}/receive", async (
             Guid id,
+            [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ReceivePurchaseRequestRequest? request,
+            IValidator<ReceivePurchaseRequestRequest> validator,
             IPurchaseRequestService service,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await service.ReceiveAsync(id, cancellationToken));
+            if (request is not null)
+            {
+                var validation = await validator.ValidateAsync(request, cancellationToken);
+                if (!validation.IsValid)
+                {
+                    return validation.ToHttpResult();
+                }
+            }
+
+            return Results.Ok(await service.ReceiveAsync(id, request, cancellationToken));
         })
         .RequireAuthorization("CatalogManagers");
 

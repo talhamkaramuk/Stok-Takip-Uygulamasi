@@ -320,6 +320,8 @@ public static class DevelopmentDataSeeder
         {
             var product = products[(i + 2) % products.Count];
             var supplier = suppliers[i % suppliers.Count];
+            var quantity = 4 + i;
+            var receivedQuantity = i < 3 ? 0 : i == 3 ? quantity - 2 : quantity;
             var request = new PurchaseRequest
             {
                 TenantId = tenantId,
@@ -327,12 +329,18 @@ public static class DevelopmentDataSeeder
                 SupplierId = supplier.Id,
                 SupplierName = supplier.Name,
                 WarehouseId = warehouses["MAIN"].Id,
-                Status = i < 2 ? PurchaseRequestStatus.PendingApproval : i < 4 ? PurchaseRequestStatus.Approved : PurchaseRequestStatus.Received,
+                Status = i < 2
+                    ? PurchaseRequestStatus.PendingApproval
+                    : i == 2
+                        ? PurchaseRequestStatus.Approved
+                        : i == 3
+                            ? PurchaseRequestStatus.PartiallyReceived
+                            : PurchaseRequestStatus.Received,
                 Notes = "Demo alım talebi",
                 ApprovedAt = i >= 2 ? now.AddDays(-i) : null,
                 ReceivedAt = i >= 4 ? now.AddDays(-i + 1) : null
             };
-            request.Items.Add(new PurchaseRequestItem { TenantId = tenantId, ProductId = product.Id, Quantity = 4 + i });
+            request.Items.Add(new PurchaseRequestItem { TenantId = tenantId, ProductId = product.Id, Quantity = quantity, ReceivedQuantity = receivedQuantity });
             purchases.Add(request);
         }
 

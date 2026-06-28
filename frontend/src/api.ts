@@ -196,8 +196,11 @@ export function createApiClient(token: string | null) {
     approvePurchaseRequest: (id: string) =>
       request<PurchaseRequest>(`${API_PREFIX}/purchase-requests/${id}/approve`, { method: "POST" }),
 
-    receivePurchaseRequest: (id: string) =>
-      request<PurchaseRequest>(`${API_PREFIX}/purchase-requests/${id}/receive`, { method: "POST" }),
+    receivePurchaseRequest: (id: string, body?: { items: { productId: string; quantity: number }[] }) =>
+      request<PurchaseRequest>(`${API_PREFIX}/purchase-requests/${id}/receive`, {
+        method: "POST",
+        body: body ? JSON.stringify(body) : undefined
+      }),
 
     listShipments: () => request<PagedResult<Shipment>>(`${API_PREFIX}/shipments?pageSize=100`),
 

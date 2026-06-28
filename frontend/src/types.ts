@@ -178,6 +178,7 @@ export type OperationItem = {
   quantity: number;
   shippedQuantity: number;
   returnedQuantity: number;
+  receivedQuantity: number;
 };
 
 export type SalesOrderStatus = "Draft" | "Pending" | "PartiallyShipped" | "Shipped" | "Cancelled";
@@ -197,7 +198,7 @@ export type SalesOrder = {
   items: OperationItem[];
 };
 
-export type PurchaseRequestStatus = "PendingApproval" | "Approved" | "Received" | "Cancelled";
+export type PurchaseRequestStatus = "PendingApproval" | "Approved" | "PartiallyReceived" | "Received" | "Cancelled";
 
 export type PurchaseRequest = {
   id: string;

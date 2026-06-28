@@ -10,7 +10,8 @@ public sealed record OperationItemDto(
     string ProductName,
     int Quantity,
     int ShippedQuantity = 0,
-    int ReturnedQuantity = 0);
+    int ReturnedQuantity = 0,
+    int ReceivedQuantity = 0);
 
 public sealed record CreateSalesOrderRequest(
     string CustomerName,
@@ -39,6 +40,8 @@ public sealed record CreatePurchaseRequestRequest(
     string? Notes,
     IReadOnlyList<OperationItemRequest> Items,
     Guid? SupplierId = null);
+
+public sealed record ReceivePurchaseRequestRequest(IReadOnlyList<OperationItemRequest>? Items = null);
 
 public sealed record PurchaseRequestDto(
     Guid Id,

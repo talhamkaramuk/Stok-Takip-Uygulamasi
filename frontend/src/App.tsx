@@ -42,6 +42,7 @@ import type {
   InventoryCount,
   InventoryCountItem,
   ManagedUser,
+  OperationItem,
   Product,
   PurchaseRequest,
   ReturnRequest,
@@ -1007,8 +1008,8 @@ function buildPageMetrics(
         { label: "Toplam talep", value: data.purchaseRequests.length.toString(), icon: <Download size={19} /> },
         { label: "Onay bekliyor", value: data.purchaseRequests.filter((request) => request.status === "PendingApproval").length.toString(), icon: <ClipboardList size={19} /> },
         { label: "Onaylandı", value: data.purchaseRequests.filter((request) => request.status === "Approved").length.toString(), icon: <Check size={19} />, tone: "ok" },
+        { label: "Kısmi teslim", value: data.purchaseRequests.filter((request) => request.status === "PartiallyReceived").length.toString(), icon: <Boxes size={19} /> },
         { label: "Teslim alındı", value: data.purchaseRequests.filter((request) => request.status === "Received").length.toString(), icon: <Boxes size={19} /> },
-        { label: "İptal", value: data.purchaseRequests.filter((request) => request.status === "Cancelled").length.toString(), icon: <AlertTriangle size={19} />, tone: "warn" }
       ];
     case "shipments":
       return [
@@ -1149,7 +1150,7 @@ function DashboardView({
   const pendingJobs = [
     { label: "Bekleyen sipariş", value: orders.filter((order) => order.status === "Pending" || order.status === "PartiallyShipped").length },
     { label: "Onay bekleyen alım", value: purchaseRequests.filter((request) => request.status === "PendingApproval").length },
-    { label: "Teslim alınacak alım", value: purchaseRequests.filter((request) => request.status === "Approved").length },
+    { label: "Teslim alınacak alım", value: purchaseRequests.filter((request) => request.status === "Approved" || request.status === "PartiallyReceived").length },
     { label: "Kritik stok", value: critical.length }
   ];
   const warehouseBars = buildWarehouseBars(warehouses, warehouseStock);
@@ -2169,14 +2170,43 @@ function PurchaseRequestsView({
   setNotice: (notice: Notice | null) => void;
 }) {
   const [form, setForm] = useState({ supplierId: "", supplierName: "", productId: "", warehouseId: "", quantity: 1, notes: "" });
+  const [receiveForm, setReceiveForm] = useState({ requestId: "", productId: "", quantity: 1 });
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeSuppliers = suppliers.filter((supplier) => supplier.isActive);
   const selectedWarehouseId = form.warehouseId || getDefaultWarehouseId(activeWarehouses);
   const requestPagination = usePagination(purchaseRequests);
+  const receivableRequests = purchaseRequests.filter((request) =>
+    (request.status === "Approved" || request.status === "PartiallyReceived") &&
+    request.items.some((item) => item.quantity - (item.receivedQuantity ?? 0) > 0));
+  const selectedReceiveRequest = purchaseRequests.find((request) => request.id === receiveForm.requestId);
+  const receivableItems = selectedReceiveRequest?.items.filter((item) => item.quantity - (item.receivedQuantity ?? 0) > 0) ?? [];
 
   function selectSupplier(supplierId: string) {
     const supplier = activeSuppliers.find((item) => item.id === supplierId);
     setForm({ ...form, supplierId, supplierName: supplier?.name ?? form.supplierName });
+  }
+
+  function remainingPurchaseQuantity(item: OperationItem) {
+    return item.quantity - (item.receivedQuantity ?? 0);
+  }
+
+  function selectReceiveRequest(requestId: string) {
+    const request = purchaseRequests.find((item) => item.id === requestId);
+    const item = request?.items.find((line) => remainingPurchaseQuantity(line) > 0);
+    setReceiveForm({
+      requestId,
+      productId: item?.productId ?? "",
+      quantity: item ? remainingPurchaseQuantity(item) : 1
+    });
+  }
+
+  function selectReceiveProduct(productId: string) {
+    const item = receivableItems.find((line) => line.productId === productId);
+    setReceiveForm({
+      ...receiveForm,
+      productId,
+      quantity: item ? remainingPurchaseQuantity(item) : receiveForm.quantity
+    });
   }
 
   async function submit(event: FormEvent) {
@@ -2208,6 +2238,21 @@ function PurchaseRequestsView({
         await api.receivePurchaseRequest(id);
         setNotice({ type: "success", message: "Alım talebi teslim alındı ve stok işlendi." });
       }
+      onChanged();
+    } catch (error) {
+      setNotice({ type: "error", message: getErrorMessage(error) });
+    }
+  }
+
+  async function submitReceive(event: FormEvent) {
+    event.preventDefault();
+    setNotice(null);
+    try {
+      await api.receivePurchaseRequest(receiveForm.requestId, {
+        items: [{ productId: receiveForm.productId, quantity: receiveForm.quantity }]
+      });
+      setReceiveForm({ requestId: "", productId: "", quantity: 1 });
+      setNotice({ type: "success", message: "Kısmi teslimat alındı ve stok işlendi." });
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -2282,7 +2327,7 @@ function PurchaseRequestsView({
                 <th>Talep No</th>
                 <th>Tedarikçi</th>
                 <th>Depo</th>
-                <th>Adet</th>
+                <th>Teslim / Talep</th>
                 <th>Durum</th>
                 <th>İşlem</th>
               </tr>
@@ -2293,15 +2338,18 @@ function PurchaseRequestsView({
                   <td>{request.requestNumber}</td>
                   <td>{request.supplierName}</td>
                   <td>{request.warehouseName || "-"}</td>
-                  <td>{request.totalQuantity}</td>
+                  <td>{request.items.reduce((sum, item) => sum + (item.receivedQuantity ?? 0), 0)} / {request.totalQuantity}</td>
                   <td><span className={statusClass(request.status)}>{statusLabel(request.status)}</span></td>
                   <td>
                     <div className="table-actions">
                       {request.status === "PendingApproval" && (
                         <button className="ghost-action compact-action" type="button" onClick={() => void mutate(request.id, "approve")}>Onayla</button>
                       )}
-                      {request.status !== "Received" && request.status !== "Cancelled" && (
-                        <button className="primary-action compact-action" type="button" onClick={() => void mutate(request.id, "receive")}>Teslim Al</button>
+                      {(request.status === "Approved" || request.status === "PartiallyReceived") && (
+                        <button className="ghost-action compact-action" type="button" onClick={() => selectReceiveRequest(request.id)}>Kısmi Al</button>
+                      )}
+                      {(request.status === "Approved" || request.status === "PartiallyReceived") && (
+                        <button className="primary-action compact-action" type="button" onClick={() => void mutate(request.id, "receive")}>Kalanı Al</button>
                       )}
                     </div>
                   </td>
@@ -2310,6 +2358,47 @@ function PurchaseRequestsView({
             </tbody>
           </table>
         </div>
+        {receivableRequests.length > 0 && (
+          <form className="form-grid" onSubmit={submitReceive}>
+            <div className="inline-fields">
+              <label>
+                Kısmi teslim talebi
+                <select value={receiveForm.requestId} onChange={(event) => selectReceiveRequest(event.target.value)} required>
+                  <option value="">Seç</option>
+                  {receivableRequests.map((request) => (
+                    <option key={request.id} value={request.id}>{request.requestNumber} - {request.supplierName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Ürün
+                <select value={receiveForm.productId} onChange={(event) => selectReceiveProduct(event.target.value)} required>
+                  <option value="">Seç</option>
+                  {receivableItems.map((item) => (
+                    <option key={item.productId} value={item.productId}>{item.sku} - kalan {remainingPurchaseQuantity(item)}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="inline-fields">
+              <label>
+                Teslim adet
+                <input
+                  type="number"
+                  min={1}
+                  max={receivableItems.find((item) => item.productId === receiveForm.productId) ? remainingPurchaseQuantity(receivableItems.find((item) => item.productId === receiveForm.productId)!) : undefined}
+                  value={receiveForm.quantity}
+                  onChange={(event) => setReceiveForm({ ...receiveForm, quantity: event.target.valueAsNumber })}
+                  required
+                />
+              </label>
+              <button className="primary-action" type="submit">
+                <Boxes size={17} />
+                Kısmi Al
+              </button>
+            </div>
+          </form>
+        )}
         <PaginationControls
           page={requestPagination.page}
           totalPages={requestPagination.totalPages}
@@ -3904,6 +3993,7 @@ function statusLabel(status: string) {
     Cancelled: "İptal",
     PendingApproval: "Onay Bekliyor",
     Approved: "Onaylandı",
+    PartiallyReceived: "Kısmi Teslim Alındı",
     Received: "Teslim Alındı",
     Rejected: "Reddedildi"
   };

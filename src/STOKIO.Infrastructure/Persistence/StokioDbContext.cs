@@ -255,9 +255,15 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
 
         modelBuilder.Entity<PurchaseRequestItem>(entity =>
         {
-            entity.ToTable(table => table.HasCheckConstraint("ck_purchase_request_items_quantity_positive", "\"Quantity\" > 0"));
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("ck_purchase_request_items_quantity_positive", "\"Quantity\" > 0");
+                table.HasCheckConstraint("ck_purchase_request_items_received_quantity_non_negative", "\"ReceivedQuantity\" >= 0");
+                table.HasCheckConstraint("ck_purchase_request_items_received_quantity_not_over_requested", "\"ReceivedQuantity\" <= \"Quantity\"");
+            });
             entity.HasQueryFilter(x => x.TenantId == TenantFilterId);
             entity.HasIndex(x => new { x.TenantId, x.PurchaseRequestId, x.ProductId });
+            entity.Property(x => x.Version).HasDefaultValue(1).IsConcurrencyToken();
             entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.PurchaseRequest).WithMany(x => x.Items).HasForeignKey(x => x.PurchaseRequestId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
@@ -374,6 +380,14 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
         }
 
         foreach (var entry in ChangeTracker.Entries<SalesOrderItem>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.Version++;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<PurchaseRequestItem>())
         {
             if (entry.State == EntityState.Modified)
             {

@@ -72,7 +72,8 @@ public sealed class OperationServicesTests
         await shipmentService.CreateAsync(new CreateShipmentRequest(null, "Customer", warehouse.Id, null, null, [new OperationItemRequest(product.Id, 3)]), CancellationToken.None);
         await returnService.CreateAsync(new CreateReturnRequestRequest(null, "Customer", warehouse.Id, "Damaged package", [new OperationItemRequest(product.Id, 2)]), CancellationToken.None);
         var purchase = await purchaseService.CreateAsync(new CreatePurchaseRequestRequest("Supplier", warehouse.Id, null, [new OperationItemRequest(product.Id, 5)]), CancellationToken.None);
-        await purchaseService.ReceiveAsync(purchase.Id, CancellationToken.None);
+        await purchaseService.ApproveAsync(purchase.Id, CancellationToken.None);
+        await purchaseService.ReceiveAsync(purchase.Id, null, CancellationToken.None);
 
         var storedProduct = dbContext.Products.Single(x => x.Id == product.Id);
         var storedWarehouseStock = dbContext.WarehouseStocks.Single(x => x.ProductId == product.Id && x.WarehouseId == warehouse.Id);
@@ -236,15 +237,125 @@ public sealed class OperationServicesTests
         dbContext.Products.Add(product);
         await dbContext.SaveChangesAsync();
         var purchase = await purchaseService.CreateAsync(new CreatePurchaseRequestRequest("Supplier", null, null, [new OperationItemRequest(product.Id, 5)]), CancellationToken.None);
+        await purchaseService.ApproveAsync(purchase.Id, CancellationToken.None);
 
-        var first = await purchaseService.ReceiveAsync(purchase.Id, CancellationToken.None);
-        var second = await purchaseService.ReceiveAsync(purchase.Id, CancellationToken.None);
+        var first = await purchaseService.ReceiveAsync(purchase.Id, null, CancellationToken.None);
+        var second = await purchaseService.ReceiveAsync(purchase.Id, null, CancellationToken.None);
 
         Assert.Equal(first.Id, second.Id);
         Assert.Equal(PurchaseRequestStatus.Received, second.Status);
         Assert.Equal(5, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
         Assert.Single(dbContext.StockMovements.Where(x => x.Type == StockMovementType.In && x.ProductId == product.Id));
         Assert.Equal(IdempotencyRecordStatus.Completed, Assert.Single(dbContext.IdempotencyRecords).Status);
+    }
+
+    [Fact]
+    public async Task PurchaseReceive_TracksPartialAndFullReceipt()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var clock = new TestClock();
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var purchaseService = new PurchaseRequestService(dbContext, tenant, user, clock, ledger, auditWriter);
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "PUR-PARTIAL-1",
+            Name = "Partial Purchase Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        var purchase = await purchaseService.CreateAsync(new CreatePurchaseRequestRequest("Supplier", null, null, [new OperationItemRequest(product.Id, 5)]), CancellationToken.None);
+        await purchaseService.ApproveAsync(purchase.Id, CancellationToken.None);
+
+        var partial = await purchaseService.ReceiveAsync(
+            purchase.Id,
+            new ReceivePurchaseRequestRequest([new OperationItemRequest(product.Id, 2)]),
+            CancellationToken.None);
+
+        var item = dbContext.PurchaseRequestItems.Single(x => x.PurchaseRequestId == purchase.Id);
+        Assert.Equal(PurchaseRequestStatus.PartiallyReceived, partial.Status);
+        Assert.Null(partial.ReceivedAt);
+        Assert.Equal(2, item.ReceivedQuantity);
+        Assert.Equal(2, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
+
+        var completed = await purchaseService.ReceiveAsync(purchase.Id, null, CancellationToken.None);
+
+        Assert.Equal(PurchaseRequestStatus.Received, completed.Status);
+        Assert.NotNull(completed.ReceivedAt);
+        Assert.Equal(5, item.ReceivedQuantity);
+        Assert.Equal(5, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
+    }
+
+    [Fact]
+    public async Task PurchaseReceive_RejectsQuantityAboveRemaining()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var clock = new TestClock();
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var purchaseService = new PurchaseRequestService(dbContext, tenant, user, clock, ledger, auditWriter);
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "PUR-OVER-1",
+            Name = "Over Purchase Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        var purchase = await purchaseService.CreateAsync(new CreatePurchaseRequestRequest("Supplier", null, null, [new OperationItemRequest(product.Id, 3)]), CancellationToken.None);
+        await purchaseService.ApproveAsync(purchase.Id, CancellationToken.None);
+
+        var exception = await Assert.ThrowsAsync<AppProblemException>(() =>
+            purchaseService.ReceiveAsync(
+                purchase.Id,
+                new ReceivePurchaseRequestRequest([new OperationItemRequest(product.Id, 4)]),
+                CancellationToken.None));
+
+        Assert.Equal("purchase_receive_quantity_exceeds_remaining", exception.Code);
+        Assert.Equal(0, dbContext.PurchaseRequestItems.Single(x => x.PurchaseRequestId == purchase.Id).ReceivedQuantity);
+        Assert.Equal(0, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
+        Assert.Empty(dbContext.StockMovements.Where(x => x.Type == StockMovementType.In && x.ProductId == product.Id));
+    }
+
+    [Fact]
+    public async Task PurchaseReceive_RequiresApprovedRequest()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var clock = new TestClock();
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var purchaseService = new PurchaseRequestService(dbContext, tenant, user, clock, ledger, auditWriter);
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "PUR-NOT-APPROVED",
+            Name = "Not Approved Purchase Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        var purchase = await purchaseService.CreateAsync(new CreatePurchaseRequestRequest("Supplier", null, null, [new OperationItemRequest(product.Id, 1)]), CancellationToken.None);
+
+        var exception = await Assert.ThrowsAsync<AppProblemException>(() =>
+            purchaseService.ReceiveAsync(purchase.Id, null, CancellationToken.None));
+
+        Assert.Equal("purchase_request_not_approved", exception.Code);
+        Assert.Equal(0, dbContext.Products.Single(x => x.Id == product.Id).CurrentStock);
     }
 
     [Fact]

@@ -44,6 +44,7 @@ Operasyon modeli stok defterinin ustune is sureci katmani ekler:
 - `SalesOrder` musteri siparislerini ve sevkiyat durumunu izler; tek basina stok degistirmez.
 - `SalesOrderItem` ordered quantity, shipped quantity ve returned quantity sayaclarini tutar. `shipped <= ordered` ve `returned <= shipped` kurallari hem servis validasyonu hem veritabani constraint'leri ile korunur.
 - `PurchaseRequest` tedarik talebini, onayi ve teslim alma adimini izler; stok artisi yalnizca teslim alma adiminda olusur.
+- `PurchaseRequestItem` requested quantity ve received quantity sayaclarini tutar. `received <= requested` kurali hem servis validasyonu hem veritabani constraint'leri ile korunur. Alim talebi `Approved`, `PartiallyReceived` veya `Received` durumlari arasinda ilerler.
 - `Shipment` siparise bagli veya bagimsiz sevkiyatlari tutar; stok dusumu bu adimda yapilir. Siparise bagli sevkiyat fazla sevkiyati engeller ve siparisi `PartiallyShipped` veya `Shipped` durumuna tasir.
 - `ReturnRequest` musteri iadelerini kaydeder; iade edilen miktar ilgili depoya geri girer. Siparise bagli iadelerde miktar, daha once sevk edilmis ve henuz iade edilmemis bakiye ile sinirlanir.
 

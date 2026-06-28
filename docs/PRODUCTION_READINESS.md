@@ -74,6 +74,7 @@ Mevcut durum:
 - Çok satırlı stok operasyonları ürün ve depo stok satırlarını deterministik sırayla işler.
 - PostgreSQL'de stok yazma sırasında `Products` ve `WarehouseStocks` satırları explicit row lock ile kilitlenir.
 - `Product.Version` ve `WarehouseStock.Version` concurrency token olarak kullanılır.
+- Alim talebi teslim alma akislari `PurchaseRequestItem.ReceivedQuantity` ve `Version` alanlari uzerinden takip edilir. Kismi teslim alma stok hareketini yalnizca teslim alinan miktar kadar yazar; kalan miktari asan teslim alma servis validasyonu ve check constraint'leri ile reddedilir.
 - Siparise bagli sevkiyat ve iade akislari `SalesOrderItem.ShippedQuantity`, `ReturnedQuantity` ve `Version` alanlari uzerinden takip edilir. Fazla sevkiyat ve sevk edilenden fazla iade servis validasyonu ve check constraint'leri ile reddedilir.
 - Kritik stok yazma işlemleri `Idempotency-Key` header'ını destekler.
 - Concurrency çakışmaları `stock_concurrency_conflict` koduyla 409 olarak döner.

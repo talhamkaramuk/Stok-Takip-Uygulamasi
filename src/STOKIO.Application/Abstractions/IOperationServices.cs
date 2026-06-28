@@ -15,7 +15,7 @@ public interface IPurchaseRequestService
     Task<PagedResult<PurchaseRequestDto>> ListAsync(PurchaseRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken);
     Task<PurchaseRequestDto> CreateAsync(CreatePurchaseRequestRequest request, CancellationToken cancellationToken);
     Task<PurchaseRequestDto> ApproveAsync(Guid id, CancellationToken cancellationToken);
-    Task<PurchaseRequestDto> ReceiveAsync(Guid id, CancellationToken cancellationToken);
+    Task<PurchaseRequestDto> ReceiveAsync(Guid id, ReceivePurchaseRequestRequest? request, CancellationToken cancellationToken);
 }
 
 public interface IShipmentService

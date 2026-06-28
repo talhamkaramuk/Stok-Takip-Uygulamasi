@@ -399,8 +399,12 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "PurchaseRequestId" uuid NOT NULL,
             "ProductId" uuid NOT NULL,
             "Quantity" integer NOT NULL,
+            "ReceivedQuantity" integer NOT NULL DEFAULT 0,
+            "Version" integer NOT NULL DEFAULT 1,
             CONSTRAINT "PK_PurchaseRequestItems" PRIMARY KEY ("Id"),
             CONSTRAINT "CK_PurchaseRequestItems_Quantity_Positive" CHECK ("Quantity" > 0),
+            CONSTRAINT "CK_PurchaseRequestItems_ReceivedQuantity_NonNegative" CHECK ("ReceivedQuantity" >= 0),
+            CONSTRAINT "CK_PurchaseRequestItems_ReceivedQuantity_NotOverRequested" CHECK ("ReceivedQuantity" <= "Quantity"),
             CONSTRAINT "FK_PurchaseRequestItems_Tenants_TenantId" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("Id") ON DELETE RESTRICT,
             CONSTRAINT "FK_PurchaseRequestItems_PurchaseRequests_PurchaseRequestId" FOREIGN KEY ("PurchaseRequestId") REFERENCES "PurchaseRequests" ("Id") ON DELETE CASCADE,
             CONSTRAINT "FK_PurchaseRequestItems_Products_ProductId" FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE RESTRICT
@@ -484,6 +488,14 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "ShippedQuantity" integer NOT NULL DEFAULT 0;
         ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "ReturnedQuantity" integer NOT NULL DEFAULT 0;
         ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "Version" integer NOT NULL DEFAULT 1;
+        ALTER TABLE "PurchaseRequestItems" ADD COLUMN IF NOT EXISTS "ReceivedQuantity" integer NOT NULL DEFAULT 0;
+        ALTER TABLE "PurchaseRequestItems" ADD COLUMN IF NOT EXISTS "Version" integer NOT NULL DEFAULT 1;
+        UPDATE "PurchaseRequestItems" AS pri
+        SET "ReceivedQuantity" = pri."Quantity"
+        FROM "PurchaseRequests" AS pr
+        WHERE pri."PurchaseRequestId" = pr."Id"
+          AND pr."Status" = 'Received'
+          AND pri."ReceivedQuantity" = 0;
         UPDATE "SalesOrderItems" AS soi
         SET "ShippedQuantity" = soi."Quantity"
         FROM "SalesOrders" AS so
@@ -518,6 +530,12 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_SalesOrderItems_ReturnedQuantity_NotOverShipped') THEN
                 ALTER TABLE "SalesOrderItems" ADD CONSTRAINT "CK_SalesOrderItems_ReturnedQuantity_NotOverShipped" CHECK ("ReturnedQuantity" <= "ShippedQuantity");
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_PurchaseRequestItems_ReceivedQuantity_NonNegative') THEN
+                ALTER TABLE "PurchaseRequestItems" ADD CONSTRAINT "CK_PurchaseRequestItems_ReceivedQuantity_NonNegative" CHECK ("ReceivedQuantity" >= 0);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_PurchaseRequestItems_ReceivedQuantity_NotOverRequested') THEN
+                ALTER TABLE "PurchaseRequestItems" ADD CONSTRAINT "CK_PurchaseRequestItems_ReceivedQuantity_NotOverRequested" CHECK ("ReceivedQuantity" <= "Quantity");
             END IF;
         END $$;
 

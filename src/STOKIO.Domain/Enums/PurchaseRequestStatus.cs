@@ -4,6 +4,7 @@ public enum PurchaseRequestStatus
 {
     PendingApproval = 1,
     Approved = 2,
-    Received = 3,
-    Cancelled = 4
+    PartiallyReceived = 3,
+    Received = 4,
+    Cancelled = 5
 }
