@@ -127,7 +127,7 @@ public sealed class StartupSafetyTests
             Issuer = "STOKIO.Api",
             Audience = "STOKIO.Web",
             SigningKey = signingKey,
-            AccessTokenMinutes = 60
+            AccessTokenMinutes = 15
         };
     }
 

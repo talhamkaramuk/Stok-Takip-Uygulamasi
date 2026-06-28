@@ -55,8 +55,25 @@ import type {
   WarehouseStock
 } from "./types";
 
-const tokenStorageKey = "stokio.accessToken";
-const userStorageKey = "stokio.user";
+const legacyTokenStorageKey = "stokio.accessToken";
+const legacyUserStorageKey = "stokio.user";
+const demoCredentialsEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_CREDENTIALS === "true";
+const demoPassword = demoCredentialsEnabled ? "StrongPass123" : "";
+const initialAuthForm = demoCredentialsEnabled
+  ? {
+      businessName: "STOKIO Demo",
+      tenantSlug: "stokio-demo",
+      ownerName: "Talha",
+      email: "owner@stokio.local",
+      password: demoPassword
+    }
+  : {
+      businessName: "",
+      tenantSlug: "",
+      ownerName: "",
+      email: "",
+      password: ""
+    };
 
 type TabKey =
   | "dashboard"
@@ -153,25 +170,23 @@ const tabMeta: Record<TabKey, { title: string; description: string }> = {
 };
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(tokenStorageKey));
-  const [user, setUser] = useState<AuthResponse["user"] | null>(() => {
-    const raw = localStorage.getItem(userStorageKey);
-    return raw ? (JSON.parse(raw) as AuthResponse["user"]) : null;
-  });
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthResponse["user"] | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const api = useMemo(() => createApiClient(token), [token]);
 
+  useEffect(() => {
+    localStorage.removeItem(legacyTokenStorageKey);
+    localStorage.removeItem(legacyUserStorageKey);
+  }, []);
+
   function handleAuth(response: AuthResponse) {
-    localStorage.setItem(tokenStorageKey, response.accessToken);
-    localStorage.setItem(userStorageKey, JSON.stringify(response.user));
     setNotice(null);
     setToken(response.accessToken);
     setUser(response.user);
   }
 
   function logout() {
-    localStorage.removeItem(tokenStorageKey);
-    localStorage.removeItem(userStorageKey);
     setNotice(null);
     setToken(null);
     setUser(null);
@@ -205,13 +220,7 @@ function AuthScreen({
 }) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    businessName: "STOKIO Demo",
-    tenantSlug: "stokio-demo",
-    ownerName: "Talha",
-    email: "owner@stokio.local",
-    password: "StrongPass123"
-  });
+  const [form, setForm] = useState(initialAuthForm);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -2922,7 +2931,7 @@ function UsersView({
   const [form, setForm] = useState({
     fullName: "",
     email: "",
-    password: "StrongPass123",
+    password: demoPassword,
     role: "Staff" as "Manager" | "Staff"
   });
   const userPagination = usePagination(users);
@@ -2932,7 +2941,7 @@ function UsersView({
     setNotice(null);
     try {
       await api.createUser(form);
-      setForm({ fullName: "", email: "", password: "StrongPass123", role: "Staff" });
+      setForm({ fullName: "", email: "", password: demoPassword, role: "Staff" });
       setNotice({ type: "success", message: "Kullanıcı oluşturuldu." });
       onChanged();
     } catch (error) {

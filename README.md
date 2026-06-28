@@ -78,6 +78,8 @@ npm run dev
 
 Frontend varsayılan olarak `http://localhost:5248` API adresine gider. Farklı adres için `frontend/.env` içinde `VITE_API_BASE_URL` tanımlayın.
 
+Güvenlik notu: Frontend access token'ı kalıcı tarayıcı storage alanında saklamaz; oturum yenileme sonrası kullanıcı tekrar giriş yapar. Demo giriş bilgileri yalnızca Vite development modunda veya `VITE_ENABLE_DEMO_CREDENTIALS=true` tanımlandığında formda hazır gelir. Varsayılan access token süresi 15 dakikadır; Docker profilinde `STOKIO_ACCESS_TOKEN_MINUTES` ile değiştirilebilir.
+
 ## Testler
 
 ```powershell
