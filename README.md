@@ -69,7 +69,7 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Web arayüzü `http://localhost:5173`, API `http://localhost:8080`, Swagger `http://localhost:8080/swagger` üzerinden açılır. Versiyonlu API yolu `/api/v1` altındadır. Docker profili ilk geliştirme akışı için `Database__EnsureCreated=true`, `Database__ApplyDevelopmentSchemaPatches=true` ve `Database__SeedDevelopmentData=true` kullanır.
+Web arayüzü `http://localhost:5173`, API `http://localhost:8080`, Swagger `http://localhost:8080/swagger` üzerinden açılır. Versiyonlu API yolu `/api/v1` altındadır. Legacy `/api` yolları geçici uyumluluk için açıktır ve `Deprecation`/`Sunset` header'ları döndürür. Docker profili ilk geliştirme akışı için `Database__EnsureCreated=true`, `Database__ApplyDevelopmentSchemaPatches=true` ve `Database__SeedDevelopmentData=true` kullanır.
 
 Yerel çalıştırma:
 

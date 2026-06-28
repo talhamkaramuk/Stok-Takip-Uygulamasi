@@ -54,6 +54,6 @@ Operasyon modeli stok defterinin ustune is sureci katmani ekler:
 
 `src/STOKIO.Api` minimal API endpoint'lerini, JWT doğrulamayı, role-based authorization policy'lerini, rate limiting, CORS, Swagger ve merkezi hata formatını içerir.
 
-Yeni sözleşmeler `/api/v1` altındadır. Geçiş uyumluluğu için `/api` yolları da map edilir.
+Yeni sözleşmeler `/api/v1` altındadır. Geçiş uyumluluğu için `/api` yolları da map edilir; bu legacy yüzey response olarak `Deprecation: true`, `Sunset: Thu, 31 Dec 2026 23:59:59 GMT` ve `/api/v1` successor link header'ı döndürür. Yeni istemciler yalnızca `/api/v1` kullanmalıdır.
 
 `frontend` React ve TypeScript ile hazırlanmış operasyonel SPA arayüzüdür.

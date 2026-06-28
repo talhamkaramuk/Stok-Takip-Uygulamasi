@@ -33,6 +33,7 @@ Mevcut durum:
 - `InitialCreate` EF Core migration dosyası oluşturuldu.
 - `dotnet-ef` local tool manifesti `.config/dotnet-tools.json` altında sabitlendi.
 - Development hızlı başlangıç akışı için schema patch korunur; üretimde kapalı kalır.
+- Legacy `/api` route'ları geçici olarak korunur ve `Deprecation`/`Sunset` header'ları döndürür. Yeni istemciler `/api/v1` kullanmalı; 31 Aralık 2026 sonrası release'te `/api` route'ları kaldırılmalıdır.
 
 ## P1 - Stok Veri Bütünlüğü
 

@@ -115,6 +115,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 app.UseCors("Frontend");
+app.UseMiddleware<LegacyApiDeprecationMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<TenantContextMiddleware>();
 app.UseRateLimiter();
