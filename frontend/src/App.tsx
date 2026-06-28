@@ -1207,7 +1207,7 @@ function DashboardView({
         <HorizontalBars rows={warehouseBars} />
       </section>
 
-      <section className="tool-panel dashboard-span-2">
+      <section className="tool-panel">
         <div className="section-title">
           <PackagePlus size={19} />
           <h2>Operasyondaki ürünler</h2>
@@ -1230,7 +1230,28 @@ function DashboardView({
         </div>
       </section>
 
-      <section className="tool-panel dashboard-span-2">
+      <section className="tool-panel">
+        <div className="section-title">
+          <Users size={19} />
+          <h2>Cari kapsama</h2>
+        </div>
+        <div className="coverage-grid">
+          <div>
+            <strong>{activeCustomers}</strong>
+            <span>Aktif müşteri</span>
+          </div>
+          <div>
+            <strong>{activeSuppliers}</strong>
+            <span>Aktif tedarikçi</span>
+          </div>
+          <div>
+            <strong>{products.filter((product) => product.isActive).length}</strong>
+            <span>Aktif ürün</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="tool-panel dashboard-span-3">
         <div className="section-title">
           <ClipboardCheck size={19} />
           <h2>Son operasyonlar</h2>
@@ -1269,27 +1290,6 @@ function DashboardView({
           endIndex={recentOperationPagination.endIndex}
           onPageChange={recentOperationPagination.setPage}
         />
-      </section>
-
-      <section className="tool-panel">
-        <div className="section-title">
-          <Users size={19} />
-          <h2>Cari kapsama</h2>
-        </div>
-        <div className="coverage-grid">
-          <div>
-            <strong>{activeCustomers}</strong>
-            <span>Aktif müşteri</span>
-          </div>
-          <div>
-            <strong>{activeSuppliers}</strong>
-            <span>Aktif tedarikçi</span>
-          </div>
-          <div>
-            <strong>{products.filter((product) => product.isActive).length}</strong>
-            <span>Aktif ürün</span>
-          </div>
-        </div>
       </section>
     </div>
   );
