@@ -15,13 +15,14 @@ public static class CategoryEndpoints
             .WithTags("Categories");
 
         group.MapGet("/", async (
+            string? search,
             bool? isActive,
             int? page,
             int? pageSize,
             ICategoryService categoryService,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await categoryService.ListAsync(isActive, page, pageSize, cancellationToken));
+            return Results.Ok(await categoryService.ListAsync(search, isActive, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 

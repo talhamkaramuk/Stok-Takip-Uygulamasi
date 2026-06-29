@@ -48,19 +48,13 @@ import type {
   CountDifference,
   CriticalStock,
   Customer,
+  DashboardSummary,
   InventoryCount,
   InventoryCountItem,
-  ManagedUser,
   Product,
-  PurchaseRequest,
-  ReturnRequest,
   SalesOrder,
-  Shipment,
-  StockConsistency,
-  StockMovement,
   Supplier,
   Warehouse,
-  WarehouseStock
 } from "../types";
 import { tabMeta } from "./navigation";
 import { buildPageMetrics } from "./pageMetrics";
@@ -96,15 +90,9 @@ export function AppShell({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock[]>([]);
-  const [users, setUsers] = useState<ManagedUser[]>([]);
   const [critical, setCritical] = useState<CriticalStock[]>([]);
-  const [movements, setMovements] = useState<StockMovement[]>([]);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
-  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
-  const [shipments, setShipments] = useState<Shipment[]>([]);
-  const [returns, setReturns] = useState<ReturnRequest[]>([]);
-  const [consistency, setConsistency] = useState<StockConsistency[]>([]);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [activeCount, setActiveCount] = useState<InventoryCount | null>(null);
   const [lastScannedItem, setLastScannedItem] = useState<InventoryCountItem | null>(null);
   const [differences, setDifferences] = useState<CountDifference[]>([]);
@@ -114,57 +102,40 @@ export function AppShell({
     setLoading(true);
     try {
       const [
+        nextDashboardSummary,
         nextProducts,
         nextCritical,
-        nextMovements,
         nextCategories,
         nextCustomers,
         nextSuppliers,
         nextWarehouses,
-        nextWarehouseStock,
-        nextOrders,
-        nextPurchaseRequests,
-        nextShipments,
-        nextReturns,
+        nextPendingOrders,
+        nextPartiallyShippedOrders,
+        nextShippedOrders,
         nextActiveCount
       ] = await Promise.all([
-        api.listProducts(),
+        api.getDashboardSummary(),
+        api.listProducts({ isActive: true }),
         api.listCriticalStock(),
-        api.listStockMovements(),
         api.listCategories(),
-        api.listCustomers(),
-        api.listSuppliers(),
-        api.listWarehouses(),
-        api.listWarehouseStock(),
-        api.listOrders(),
-        api.listPurchaseRequests(),
-        api.listShipments(),
-        api.listReturns(),
+        api.listCustomers({ isActive: true }),
+        api.listSuppliers({ isActive: true }),
+        api.listWarehouses({ isActive: true }),
+        api.listOrders({ status: "Pending" }),
+        api.listOrders({ status: "PartiallyShipped" }),
+        api.listOrders({ status: "Shipped" }),
         activeCount ? api.getCount(activeCount.id).catch(() => null) : Promise.resolve(null)
       ]);
+      setDashboardSummary(nextDashboardSummary);
       setProducts(nextProducts.items);
       setCritical(nextCritical);
-      setMovements(nextMovements.items);
       setCategories(nextCategories.items);
       setCustomers(nextCustomers.items);
       setSuppliers(nextSuppliers.items);
       setWarehouses(nextWarehouses.items);
-      setWarehouseStock(nextWarehouseStock);
-      setOrders(nextOrders.items);
-      setPurchaseRequests(nextPurchaseRequests.items);
-      setShipments(nextShipments.items);
-      setReturns(nextReturns.items);
+      setOrders([...nextPendingOrders.items, ...nextPartiallyShippedOrders.items, ...nextShippedOrders.items]);
       if (activeCount) {
         setActiveCount(nextActiveCount);
-      }
-
-      if (user.role === "Owner") {
-        const nextUsers = await api.listUsers();
-        setUsers(nextUsers.items);
-      }
-
-      if (user.role !== "Staff") {
-        setConsistency(await api.checkStockConsistency());
       }
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -274,19 +245,9 @@ export function AppShell({
   const page = tabMeta[tab];
   const pageMetrics = buildPageMetrics(tab, {
     products,
-    categories,
-    customers,
-    suppliers,
-    warehouses,
-    warehouseStock,
     critical,
-    movements,
-    orders,
-    purchaseRequests,
-    shipments,
-    returns,
     activeCount,
-    users
+    dashboardSummary
   });
   const initials = user.fullName
     .split(" ")
@@ -480,23 +441,12 @@ export function AppShell({
 
         {tab === "dashboard" && (
           <DashboardView
-            products={products}
-            critical={critical}
-            movements={movements}
-            orders={orders}
-            purchaseRequests={purchaseRequests}
-            shipments={shipments}
-            returns={returns}
-            warehouses={warehouses}
-            warehouseStock={warehouseStock}
-            customers={customers}
-            suppliers={suppliers}
+            summary={dashboardSummary}
           />
         )}
         {tab === "products" && (
           <ProductsView
             api={api}
-            products={products}
             categories={categories}
             onChanged={() => void refresh()}
             setNotice={setNotice}
@@ -505,7 +455,6 @@ export function AppShell({
         {tab === "categories" && (
           <CategoriesView
             api={api}
-            categories={categories}
             onChanged={() => void refresh()}
             setNotice={setNotice}
           />
@@ -513,7 +462,6 @@ export function AppShell({
         {tab === "customers" && (
           <CustomersView
             api={api}
-            customers={customers}
             onChanged={() => void refresh()}
             setNotice={setNotice}
           />
@@ -521,7 +469,6 @@ export function AppShell({
         {tab === "suppliers" && (
           <SuppliersView
             api={api}
-            suppliers={suppliers}
             onChanged={() => void refresh()}
             setNotice={setNotice}
           />
@@ -529,7 +476,6 @@ export function AppShell({
         {tab === "orders" && (
           <OrdersView
             api={api}
-            orders={orders}
             products={products}
             warehouses={warehouses}
             customers={customers}
@@ -540,7 +486,6 @@ export function AppShell({
         {tab === "purchase" && (
           <PurchaseRequestsView
             api={api}
-            purchaseRequests={purchaseRequests}
             products={products}
             warehouses={warehouses}
             suppliers={suppliers}
@@ -551,7 +496,6 @@ export function AppShell({
         {tab === "shipments" && (
           <ShipmentsView
             api={api}
-            shipments={shipments}
             orders={orders}
             products={products}
             warehouses={warehouses}
@@ -563,7 +507,6 @@ export function AppShell({
         {tab === "returns" && (
           <ReturnsView
             api={api}
-            returns={returns}
             orders={orders}
             products={products}
             warehouses={warehouses}
@@ -576,7 +519,6 @@ export function AppShell({
           <WarehousesView
             api={api}
             warehouses={warehouses}
-            warehouseStock={warehouseStock}
             products={products}
             onChanged={() => void refresh()}
             setNotice={setNotice}
@@ -587,7 +529,6 @@ export function AppShell({
             api={api}
             products={products}
             warehouses={warehouses}
-            movements={movements}
             onChanged={() => void refresh()}
             setNotice={setNotice}
           />
@@ -610,7 +551,6 @@ export function AppShell({
         {tab === "users" && user.role === "Owner" && (
           <UsersView
             api={api}
-            users={users}
             onChanged={() => void refresh()}
             setNotice={setNotice}
           />
@@ -620,8 +560,6 @@ export function AppShell({
           <ReportsView
             api={api}
             critical={critical}
-            movements={movements}
-            consistency={consistency}
             activeCount={activeCount}
             setNotice={setNotice}
           />

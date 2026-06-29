@@ -15,13 +15,14 @@ public static class UserEndpoints
             .WithTags("Users");
 
         group.MapGet("/", async (
+            string? search,
             bool? isActive,
             int? page,
             int? pageSize,
             IUserManagementService userService,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await userService.ListAsync(isActive, page, pageSize, cancellationToken));
+            return Results.Ok(await userService.ListAsync(search, isActive, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 

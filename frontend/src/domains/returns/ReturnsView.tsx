@@ -1,10 +1,12 @@
 import {
-  RotateCcw
+  RotateCcw,
+  Search
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import { OperationTable } from "../../shared/ui/OperationTable";
 import { getDefaultWarehouseId } from "../../shared/utils/inventory";
@@ -12,6 +14,7 @@ import type {
   Customer,
   Product,
   ReturnRequest,
+  ReturnRequestStatus,
   SalesOrder,
   Warehouse
 } from "../../types";
@@ -22,7 +25,6 @@ export function ReturnsView({
   warehouses,
   customers,
   orders,
-  returns,
   onChanged,
   setNotice
 }: {
@@ -31,13 +33,22 @@ export function ReturnsView({
   warehouses: Warehouse[];
   customers: Customer[];
   orders: SalesOrder[];
-  returns: ReturnRequest[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [form, setForm] = useState({ salesOrderId: "", customerId: "", customerName: "", productId: "", warehouseId: "", quantity: 1, reason: "" });
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<ReturnRequestStatus | "">("");
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeCustomers = customers.filter((customer) => customer.isActive);
+  const returnPage = useServerPage<ReturnRequest, { search?: string; status?: ReturnRequestStatus }>({
+    filters: {
+      search: query.trim() || undefined,
+      status: status || undefined
+    },
+    load: api.listReturns,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
   const returnableOrders = orders.filter((order) =>
     order.status !== "Draft" &&
     order.status !== "Cancelled" &&
@@ -77,6 +88,7 @@ export function ReturnsView({
       });
       setForm({ salesOrderId: "", customerId: "", customerName: "", productId: "", warehouseId: "", quantity: 1, reason: "" });
       setNotice({ type: "success", message: "İade kaydedildi ve stok girişi işlendi." });
+      returnPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -148,19 +160,42 @@ export function ReturnsView({
         </form>
       </section>
 
-      <OperationTable
-        title="İadeler"
-        icon={<RotateCcw size={19} />}
-        rows={returns.map((item) => ({
-          id: item.id,
-          number: item.returnNumber,
-          party: item.customerName,
-          warehouse: item.warehouseName || "-",
-          status: item.status,
-          quantity: item.totalQuantity,
-          date: item.receivedAt
-        }))}
-      />
+      <div className="content-grid">
+        <section className="tool-panel compact-filter-panel">
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="İade no, sipariş, müşteri veya neden ara" />
+            </label>
+            <select value={status} onChange={(event) => setStatus(event.target.value as ReturnRequestStatus | "")}>
+              <option value="">Tüm durumlar</option>
+              <option value="Received">Teslim alındı</option>
+              <option value="Rejected">Reddedildi</option>
+            </select>
+          </div>
+        </section>
+        <OperationTable
+          title="İadeler"
+          icon={<RotateCcw size={19} />}
+          rows={returnPage.items.map((item) => ({
+            id: item.id,
+            number: item.returnNumber,
+            party: item.customerName,
+            warehouse: item.warehouseName || "-",
+            status: item.status,
+            quantity: item.totalQuantity,
+            date: item.receivedAt
+          }))}
+          pagination={{
+            page: returnPage.page,
+            totalPages: returnPage.totalPages,
+            totalCount: returnPage.totalCount,
+            startIndex: returnPage.startIndex,
+            endIndex: returnPage.endIndex,
+            onPageChange: returnPage.setPage
+          }}
+        />
+      </div>
     </div>
   );
 }

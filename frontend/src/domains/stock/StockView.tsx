@@ -7,8 +7,10 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
+import { PaginationControls } from "../../shared/pagination/PaginationControls";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
-import { getDefaultWarehouseId, isActiveWarehouseId } from "../../shared/utils/inventory";
+import { getDefaultWarehouseId, isActiveWarehouseId, statusMovementLabel } from "../../shared/utils/inventory";
 import type {
   Product,
   StockMovement,
@@ -20,14 +22,12 @@ export function StockView({
   api,
   products,
   warehouses,
-  movements,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
   products: Product[];
   warehouses: Warehouse[];
-  movements: StockMovement[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
@@ -38,9 +38,21 @@ export function StockView({
     quantity: 1,
     reason: ""
   });
+  const [filterProductId, setFilterProductId] = useState("");
+  const [filterWarehouseId, setFilterWarehouseId] = useState("");
+  const [filterType, setFilterType] = useState<StockMovementType | "">("");
   const activeWarehouses = useMemo(() => warehouses.filter((warehouse) => warehouse.isActive), [warehouses]);
   const defaultWarehouseId = useMemo(() => getDefaultWarehouseId(activeWarehouses), [activeWarehouses]);
   const selectedWarehouseId = isActiveWarehouseId(activeWarehouses, form.warehouseId) ? form.warehouseId : defaultWarehouseId;
+  const movementPage = useServerPage<StockMovement, { productId?: string; warehouseId?: string; type?: StockMovementType }>({
+    filters: {
+      productId: filterProductId || undefined,
+      warehouseId: filterWarehouseId || undefined,
+      type: filterType || undefined
+    },
+    load: api.listStockMovements,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   useEffect(() => {
     if (form.warehouseId && !isActiveWarehouseId(activeWarehouses, form.warehouseId)) {
@@ -61,6 +73,7 @@ export function StockView({
       });
       setForm({ productId: "", warehouseId: "", type: "In", quantity: 1, reason: "" });
       setNotice({ type: "success", message: "Stok hareketi işlendi." });
+      movementPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -105,7 +118,7 @@ export function StockView({
                 type="button"
                 onClick={() => setForm({ ...form, type })}
               >
-                {type === "In" ? "Giriş" : type === "Out" ? "Çıkış" : type === "Adjustment" ? "Düzeltme" : "Sayım"}
+                {statusMovementLabel(type)}
               </button>
             ))}
           </div>
@@ -125,22 +138,52 @@ export function StockView({
       </section>
 
       <section className="tool-panel">
-        <div className="section-title">
-          <ClipboardList size={19} />
-          <h2>Hareket geçmişi</h2>
+        <div className="section-title spread">
+          <span>
+            <ClipboardList size={19} />
+            <h2>Hareket geçmişi</h2>
+          </span>
+          <div className="table-filter-row">
+            <select value={filterProductId} onChange={(event) => setFilterProductId(event.target.value)}>
+              <option value="">Tüm ürünler</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>{product.sku} - {product.name}</option>
+              ))}
+            </select>
+            <select value={filterWarehouseId} onChange={(event) => setFilterWarehouseId(event.target.value)}>
+              <option value="">Tüm depolar</option>
+              {activeWarehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>{warehouse.code} - {warehouse.name}</option>
+              ))}
+            </select>
+            <select value={filterType} onChange={(event) => setFilterType(event.target.value as StockMovementType | "")}>
+              <option value="">Tüm tipler</option>
+              {(["In", "Out", "Adjustment", "CountCorrection", "TransferIn", "TransferOut"] as StockMovementType[]).map((type) => (
+                <option key={type} value={type}>{statusMovementLabel(type)}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="timeline-list">
-          {movements.slice(0, 12).map((movement) => (
+          {movementPage.items.map((movement) => (
             <article className="timeline-item" key={movement.id}>
               <span className={`movement-dot ${movement.type.toLowerCase()}`} />
               <div>
                 <strong>{movement.sku} · {movement.productName}</strong>
-                <p>{movement.warehouseName || "Depo"} · {movement.type} · {movement.previousQuantity} → {movement.newQuantity}</p>
+                <p>{movement.warehouseName || "Depo"} · {statusMovementLabel(movement.type)} · {movement.previousQuantity} → {movement.newQuantity}</p>
               </div>
               <time>{new Date(movement.createdAt).toLocaleString("tr-TR")}</time>
             </article>
           ))}
         </div>
+        <PaginationControls
+          page={movementPage.page}
+          totalPages={movementPage.totalPages}
+          totalCount={movementPage.totalCount}
+          startIndex={movementPage.startIndex}
+          endIndex={movementPage.endIndex}
+          onPageChange={movementPage.setPage}
+        />
       </section>
     </div>
   );

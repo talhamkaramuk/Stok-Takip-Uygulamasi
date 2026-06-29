@@ -3,6 +3,7 @@ import type {
   Category,
   CountDifference,
   CriticalStock,
+  DashboardSummary,
   Customer,
   InventoryCount,
   InventoryCountItem,
@@ -26,6 +27,54 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const API_PREFIX = "/api/v1";
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+type QueryValue = string | number | boolean | null | undefined;
+type PageQuery = {
+  page?: number;
+  pageSize?: number;
+};
+type ProductListQuery = PageQuery & {
+  search?: string;
+  categoryId?: string | null;
+  isActive?: boolean | null;
+};
+type PartyListQuery = PageQuery & {
+  search?: string;
+  isActive?: boolean | null;
+};
+type SearchableListQuery = PageQuery & {
+  search?: string;
+  isActive?: boolean | null;
+};
+type StatusListQuery<TStatus extends string> = PageQuery & {
+  search?: string;
+  status?: TStatus | null;
+};
+type WarehouseStockListQuery = PageQuery & {
+  warehouseId?: string | null;
+  productId?: string | null;
+};
+type StockMovementListQuery = PageQuery & {
+  productId?: string | null;
+  warehouseId?: string | null;
+  type?: StockMovementType | null;
+  from?: string | null;
+  to?: string | null;
+};
+
+function toQueryString(params: Record<string, QueryValue> = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === "") {
+      continue;
+    }
+
+    query.set(key, String(value));
+  }
+
+  const value = query.toString();
+  return value ? `?${value}` : "";
+}
 
 export function createApiClient(token: string | null) {
   async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -88,7 +137,10 @@ export function createApiClient(token: string | null) {
     login: (body: { tenantSlug: string; email: string; password: string }) =>
       request<AuthResponse>(`${API_PREFIX}/auth/login`, { method: "POST", body: JSON.stringify(body) }),
 
-    listProducts: () => request<PagedResult<Product>>(`${API_PREFIX}/products?pageSize=100`),
+    getDashboardSummary: () => request<DashboardSummary>(`${API_PREFIX}/dashboard/summary`),
+
+    listProducts: (params: ProductListQuery = {}) =>
+      request<PagedResult<Product>>(`${API_PREFIX}/products${toQueryString(params)}`),
 
     createProduct: (body: {
       sku: string;
@@ -100,12 +152,14 @@ export function createApiClient(token: string | null) {
       barcodes: string[];
     }) => request<Product>(`${API_PREFIX}/products`, { method: "POST", body: JSON.stringify(body) }),
 
-    listCategories: () => request<PagedResult<Category>>(`${API_PREFIX}/categories?pageSize=100`),
+    listCategories: (params: SearchableListQuery = {}) =>
+      request<PagedResult<Category>>(`${API_PREFIX}/categories${toQueryString(params)}`),
 
     createCategory: (body: { name: string }) =>
       request<Category>(`${API_PREFIX}/categories`, { method: "POST", body: JSON.stringify(body) }),
 
-    listCustomers: () => request<PagedResult<Customer>>(`${API_PREFIX}/customers?pageSize=100`),
+    listCustomers: (params: PartyListQuery = {}) =>
+      request<PagedResult<Customer>>(`${API_PREFIX}/customers${toQueryString(params)}`),
 
     createCustomer: (body: {
       code: string;
@@ -133,7 +187,8 @@ export function createApiClient(token: string | null) {
     deactivateCustomer: (id: string) =>
       request<void>(`${API_PREFIX}/customers/${id}`, { method: "DELETE" }),
 
-    listSuppliers: () => request<PagedResult<Supplier>>(`${API_PREFIX}/suppliers?pageSize=100`),
+    listSuppliers: (params: PartyListQuery = {}) =>
+      request<PagedResult<Supplier>>(`${API_PREFIX}/suppliers${toQueryString(params)}`),
 
     createSupplier: (body: {
       code: string;
@@ -161,19 +216,23 @@ export function createApiClient(token: string | null) {
     deactivateSupplier: (id: string) =>
       request<void>(`${API_PREFIX}/suppliers/${id}`, { method: "DELETE" }),
 
-    listUsers: () => request<PagedResult<ManagedUser>>(`${API_PREFIX}/users?pageSize=100`),
+    listUsers: (params: SearchableListQuery = {}) =>
+      request<PagedResult<ManagedUser>>(`${API_PREFIX}/users${toQueryString(params)}`),
 
     createUser: (body: { fullName: string; email: string; password: string; role: "Manager" | "Staff" }) =>
       request<ManagedUser>(`${API_PREFIX}/users`, { method: "POST", body: JSON.stringify(body) }),
 
-    listWarehouses: () => request<PagedResult<Warehouse>>(`${API_PREFIX}/warehouses?pageSize=100`),
+    listWarehouses: (params: SearchableListQuery = {}) =>
+      request<PagedResult<Warehouse>>(`${API_PREFIX}/warehouses${toQueryString(params)}`),
 
     createWarehouse: (body: { code: string; name: string; address: string | null; isDefault: boolean }) =>
       request<Warehouse>(`${API_PREFIX}/warehouses`, { method: "POST", body: JSON.stringify(body) }),
 
-    listWarehouseStock: () => request<WarehouseStock[]>(`${API_PREFIX}/warehouses/stocks`),
+    listWarehouseStock: (params: WarehouseStockListQuery = {}) =>
+      request<PagedResult<WarehouseStock>>(`${API_PREFIX}/warehouses/stocks${toQueryString(params)}`),
 
-    listOrders: () => request<PagedResult<SalesOrder>>(`${API_PREFIX}/orders?pageSize=100`),
+    listOrders: (params: StatusListQuery<SalesOrder["status"]> = {}) =>
+      request<PagedResult<SalesOrder>>(`${API_PREFIX}/orders${toQueryString(params)}`),
 
     createOrder: (body: {
       customerId: string | null;
@@ -183,7 +242,8 @@ export function createApiClient(token: string | null) {
       items: { productId: string; quantity: number }[];
     }) => request<SalesOrder>(`${API_PREFIX}/orders`, { method: "POST", body: JSON.stringify(body) }),
 
-    listPurchaseRequests: () => request<PagedResult<PurchaseRequest>>(`${API_PREFIX}/purchase-requests?pageSize=100`),
+    listPurchaseRequests: (params: StatusListQuery<PurchaseRequest["status"]> = {}) =>
+      request<PagedResult<PurchaseRequest>>(`${API_PREFIX}/purchase-requests${toQueryString(params)}`),
 
     createPurchaseRequest: (body: {
       supplierId: string | null;
@@ -202,7 +262,8 @@ export function createApiClient(token: string | null) {
         body: body ? JSON.stringify(body) : undefined
       }),
 
-    listShipments: () => request<PagedResult<Shipment>>(`${API_PREFIX}/shipments?pageSize=100`),
+    listShipments: (params: StatusListQuery<Shipment["status"]> = {}) =>
+      request<PagedResult<Shipment>>(`${API_PREFIX}/shipments${toQueryString(params)}`),
 
     createShipment: (body: {
       salesOrderId: string | null;
@@ -214,7 +275,8 @@ export function createApiClient(token: string | null) {
       items: { productId: string; quantity: number }[];
     }) => request<Shipment>(`${API_PREFIX}/shipments`, { method: "POST", body: JSON.stringify(body) }),
 
-    listReturns: () => request<PagedResult<ReturnRequest>>(`${API_PREFIX}/returns?pageSize=100`),
+    listReturns: (params: StatusListQuery<ReturnRequest["status"]> = {}) =>
+      request<PagedResult<ReturnRequest>>(`${API_PREFIX}/returns${toQueryString(params)}`),
 
     createReturn: (body: {
       salesOrderId: string | null;
@@ -241,7 +303,8 @@ export function createApiClient(token: string | null) {
       reason: string | null;
     }) => request<StockMovement>(`${API_PREFIX}/stock/movements`, { method: "POST", body: JSON.stringify(body) }),
 
-    listStockMovements: () => request<PagedResult<StockMovement>>(`${API_PREFIX}/stock/movements?pageSize=100`),
+    listStockMovements: (params: StockMovementListQuery = {}) =>
+      request<PagedResult<StockMovement>>(`${API_PREFIX}/stock/movements${toQueryString(params)}`),
 
     listCriticalStock: () => request<CriticalStock[]>(`${API_PREFIX}/stock/critical`),
 

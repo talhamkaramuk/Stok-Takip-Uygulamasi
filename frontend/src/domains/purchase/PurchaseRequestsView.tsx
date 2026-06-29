@@ -2,20 +2,22 @@ import {
   Boxes,
   ClipboardList,
   Download,
-  Plus
+  Plus,
+  Search
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import { getDefaultWarehouseId, statusClass, statusLabel } from "../../shared/utils/inventory";
 import type {
   OperationItem,
   Product,
   PurchaseRequest,
+  PurchaseRequestStatus,
   Supplier,
   Warehouse
 } from "../../types";
@@ -25,7 +27,6 @@ export function PurchaseRequestsView({
   products,
   warehouses,
   suppliers,
-  purchaseRequests,
   onChanged,
   setNotice
 }: {
@@ -33,20 +34,28 @@ export function PurchaseRequestsView({
   products: Product[];
   warehouses: Warehouse[];
   suppliers: Supplier[];
-  purchaseRequests: PurchaseRequest[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [form, setForm] = useState({ supplierId: "", supplierName: "", productId: "", warehouseId: "", quantity: 1, notes: "" });
   const [receiveForm, setReceiveForm] = useState({ requestId: "", productId: "", quantity: 1 });
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<PurchaseRequestStatus | "">("");
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeSuppliers = suppliers.filter((supplier) => supplier.isActive);
   const selectedWarehouseId = form.warehouseId || getDefaultWarehouseId(activeWarehouses);
-  const requestPagination = usePagination(purchaseRequests);
-  const receivableRequests = purchaseRequests.filter((request) =>
+  const requestPage = useServerPage<PurchaseRequest, { search?: string; status?: PurchaseRequestStatus }>({
+    filters: {
+      search: query.trim() || undefined,
+      status: status || undefined
+    },
+    load: api.listPurchaseRequests,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
+  const receivableRequests = requestPage.items.filter((request) =>
     (request.status === "Approved" || request.status === "PartiallyReceived") &&
     request.items.some((item) => item.quantity - (item.receivedQuantity ?? 0) > 0));
-  const selectedReceiveRequest = purchaseRequests.find((request) => request.id === receiveForm.requestId);
+  const selectedReceiveRequest = requestPage.items.find((request) => request.id === receiveForm.requestId);
   const receivableItems = selectedReceiveRequest?.items.filter((item) => item.quantity - (item.receivedQuantity ?? 0) > 0) ?? [];
 
   function selectSupplier(supplierId: string) {
@@ -59,7 +68,7 @@ export function PurchaseRequestsView({
   }
 
   function selectReceiveRequest(requestId: string) {
-    const request = purchaseRequests.find((item) => item.id === requestId);
+    const request = requestPage.items.find((item) => item.id === requestId);
     const item = request?.items.find((line) => remainingPurchaseQuantity(line) > 0);
     setReceiveForm({
       requestId,
@@ -90,6 +99,7 @@ export function PurchaseRequestsView({
       });
       setForm({ supplierId: "", supplierName: "", productId: "", warehouseId: "", quantity: 1, notes: "" });
       setNotice({ type: "success", message: "Alım talebi oluşturuldu." });
+      requestPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -106,6 +116,7 @@ export function PurchaseRequestsView({
         await api.receivePurchaseRequest(id);
         setNotice({ type: "success", message: "Alım talebi teslim alındı ve stok işlendi." });
       }
+      requestPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -121,6 +132,7 @@ export function PurchaseRequestsView({
       });
       setReceiveForm({ requestId: "", productId: "", quantity: 1 });
       setNotice({ type: "success", message: "Kısmi teslimat alındı ve stok işlendi." });
+      requestPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -184,9 +196,25 @@ export function PurchaseRequestsView({
       </section>
 
       <section className="tool-panel">
-        <div className="section-title">
-          <ClipboardList size={19} />
-          <h2>Alım talepleri</h2>
+        <div className="section-title spread">
+          <span>
+            <ClipboardList size={19} />
+            <h2>Alım talepleri</h2>
+          </span>
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Talep no, tedarikçi veya depo ara" />
+            </label>
+            <select value={status} onChange={(event) => setStatus(event.target.value as PurchaseRequestStatus | "")}>
+              <option value="">Tüm durumlar</option>
+              <option value="PendingApproval">Onay bekliyor</option>
+              <option value="Approved">Onaylandı</option>
+              <option value="PartiallyReceived">Kısmi teslim</option>
+              <option value="Received">Teslim alındı</option>
+              <option value="Cancelled">İptal</option>
+            </select>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -201,7 +229,7 @@ export function PurchaseRequestsView({
               </tr>
             </thead>
             <tbody>
-              {requestPagination.items.map((request) => (
+              {requestPage.items.map((request) => (
                 <tr key={request.id}>
                   <td>{request.requestNumber}</td>
                   <td>{request.supplierName}</td>
@@ -268,12 +296,12 @@ export function PurchaseRequestsView({
           </form>
         )}
         <PaginationControls
-          page={requestPagination.page}
-          totalPages={requestPagination.totalPages}
-          totalCount={requestPagination.totalCount}
-          startIndex={requestPagination.startIndex}
-          endIndex={requestPagination.endIndex}
-          onPageChange={requestPagination.setPage}
+          page={requestPage.page}
+          totalPages={requestPage.totalPages}
+          totalCount={requestPage.totalCount}
+          startIndex={requestPage.startIndex}
+          endIndex={requestPage.endIndex}
+          onPageChange={requestPage.setPage}
         />
       </section>
     </div>

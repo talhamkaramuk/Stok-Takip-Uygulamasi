@@ -1,19 +1,18 @@
 import {
   Building2,
   Check,
-  ClipboardList
+  ClipboardList,
+  Search
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import { emptyToNull } from "../../shared/utils/inventory";
-import type {
-  Customer
-} from "../../types";
+import type { Customer } from "../../types";
 
 const emptyCustomerForm = {
   code: "",
@@ -29,18 +28,25 @@ const emptyCustomerForm = {
 
 export function CustomersView({
   api,
-  customers,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
-  customers: Customer[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCustomerForm);
-  const customerPagination = usePagination(customers);
+  const [query, setQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("");
+  const customerPage = useServerPage<Customer, { search?: string; isActive?: boolean }>({
+    filters: {
+      search: query.trim() || undefined,
+      isActive: activeFilter === "" ? undefined : activeFilter === "true"
+    },
+    load: api.listCustomers,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   function edit(customer: Customer) {
     setEditingId(customer.id);
@@ -85,6 +91,7 @@ export function CustomersView({
         setNotice({ type: "success", message: "Müşteri kaydedildi." });
       }
       reset();
+      customerPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -99,6 +106,7 @@ export function CustomersView({
       if (editingId === id) {
         reset();
       }
+      customerPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -172,9 +180,22 @@ export function CustomersView({
       </section>
 
       <section className="tool-panel">
-        <div className="section-title">
-          <ClipboardList size={19} />
-          <h2>Müşteriler</h2>
+        <div className="section-title spread">
+          <span>
+            <ClipboardList size={19} />
+            <h2>Müşteriler</h2>
+          </span>
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Kod, unvan veya iletişim ara" />
+            </label>
+            <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
+              <option value="">Tüm durumlar</option>
+              <option value="true">Aktif</option>
+              <option value="false">Pasif</option>
+            </select>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -188,7 +209,7 @@ export function CustomersView({
               </tr>
             </thead>
             <tbody>
-              {customerPagination.items.map((customer) => (
+              {customerPage.items.map((customer) => (
                 <tr key={customer.id}>
                   <td>{customer.code}</td>
                   <td>{customer.name}</td>
@@ -208,26 +229,14 @@ export function CustomersView({
           </table>
         </div>
         <PaginationControls
-          page={customerPagination.page}
-          totalPages={customerPagination.totalPages}
-          totalCount={customerPagination.totalCount}
-          startIndex={customerPagination.startIndex}
-          endIndex={customerPagination.endIndex}
-          onPageChange={customerPagination.setPage}
+          page={customerPage.page}
+          totalPages={customerPage.totalPages}
+          totalCount={customerPage.totalCount}
+          startIndex={customerPage.startIndex}
+          endIndex={customerPage.endIndex}
+          onPageChange={customerPage.setPage}
         />
       </section>
     </div>
   );
 }
-
-const emptySupplierForm = {
-  code: "",
-  name: "",
-  contactName: "",
-  email: "",
-  phone: "",
-  taxNumber: "",
-  address: "",
-  notes: "",
-  isActive: true
-};

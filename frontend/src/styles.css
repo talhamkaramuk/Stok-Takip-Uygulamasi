@@ -1254,6 +1254,28 @@ select:focus {
   gap: 9px;
 }
 
+.compact-filter-panel {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.table-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: min(100%, 420px);
+}
+
+.table-filter-row .search-field {
+  flex: 1 1 220px;
+}
+
+.table-filter-row select {
+  width: auto;
+  min-width: 150px;
+}
+
 .search-field {
   max-width: 260px;
   min-height: 40px;
@@ -1671,6 +1693,18 @@ tbody tr:last-child td {
   .section-title.spread {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .table-filter-row {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .table-filter-row select {
+    width: 100%;
+    min-width: 0;
   }
 
   .search-field {

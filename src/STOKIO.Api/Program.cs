@@ -189,6 +189,7 @@ app.MapShipmentEndpoints("/api/shipments");
 app.MapReturnRequestEndpoints("/api/returns");
 app.MapReportEndpoints("/api/reports");
 app.MapExportEndpoints("/api/exports");
+app.MapDashboardEndpoints("/api/dashboard");
 
 app.MapAuthEndpoints("/api/v1/auth");
 app.MapProductEndpoints("/api/v1/products");
@@ -205,6 +206,7 @@ app.MapShipmentEndpoints("/api/v1/shipments");
 app.MapReturnRequestEndpoints("/api/v1/returns");
 app.MapReportEndpoints("/api/v1/reports");
 app.MapExportEndpoints("/api/v1/exports");
+app.MapDashboardEndpoints("/api/v1/dashboard");
 
 await app.RunAsync();
 

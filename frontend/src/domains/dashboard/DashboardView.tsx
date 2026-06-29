@@ -11,65 +11,17 @@ import {
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
 import { usePagination } from "../../shared/pagination/usePagination";
 import { formatDate, statusClass, statusLabel } from "../../shared/utils/inventory";
-import type {
-  CriticalStock,
-  Customer,
-  Product,
-  PurchaseRequest,
-  ReturnRequest,
-  SalesOrder,
-  Shipment,
-  StockMovement,
-  Supplier,
-  Warehouse,
-  WarehouseStock
-} from "../../types";
+import type { DashboardSummary } from "../../types";
 
-export function DashboardView({
-  products,
-  critical,
-  movements,
-  orders,
-  purchaseRequests,
-  shipments,
-  returns,
-  warehouses,
-  warehouseStock,
-  customers,
-  suppliers
-}: {
-  products: Product[];
-  critical: CriticalStock[];
-  movements: StockMovement[];
-  orders: SalesOrder[];
-  purchaseRequests: PurchaseRequest[];
-  shipments: Shipment[];
-  returns: ReturnRequest[];
-  warehouses: Warehouse[];
-  warehouseStock: WarehouseStock[];
-  customers: Customer[];
-  suppliers: Supplier[];
-}) {
-  const operationTrend = buildOperationTrend(orders, purchaseRequests, shipments, returns);
-  const stockFlow = buildStockFlow(movements);
-  const operationBars = [
-    { label: "Sipariş", value: orders.length, tone: "primary" },
-    { label: "Alım", value: purchaseRequests.length, tone: "success" },
-    { label: "Sevkiyat", value: shipments.length, tone: "info" },
-    { label: "İade", value: returns.length, tone: "warning" }
-  ];
-  const pendingJobs = [
-    { label: "Bekleyen sipariş", value: orders.filter((order) => order.status === "Pending" || order.status === "PartiallyShipped").length },
-    { label: "Onay bekleyen alım", value: purchaseRequests.filter((request) => request.status === "PendingApproval").length },
-    { label: "Teslim alınacak alım", value: purchaseRequests.filter((request) => request.status === "Approved" || request.status === "PartiallyReceived").length },
-    { label: "Kritik stok", value: critical.length }
-  ];
-  const warehouseBars = buildWarehouseBars(warehouses, warehouseStock);
-  const topProducts = buildTopOperationProducts(orders, purchaseRequests, shipments, returns);
-  const recentOperations = buildRecentOperations(orders, purchaseRequests, shipments, returns);
+export function DashboardView({ summary }: { summary: DashboardSummary | null }) {
+  const operationTrend = summary?.operationTrend ?? [];
+  const stockFlow = summary?.stockFlow ?? [];
+  const operationBars = summary?.operationBars ?? [];
+  const pendingJobs = summary?.pendingJobs ?? [];
+  const warehouseBars = summary?.warehouseBars ?? [];
+  const topProducts = summary?.topProducts ?? [];
+  const recentOperations = summary?.recentOperations ?? [];
   const recentOperationPagination = usePagination(recentOperations);
-  const activeCustomers = customers.filter((customer) => customer.isActive).length;
-  const activeSuppliers = suppliers.filter((supplier) => supplier.isActive).length;
   const stockIn = stockFlow.reduce((sum, point) => sum + point.inbound, 0);
   const stockOut = stockFlow.reduce((sum, point) => sum + point.outbound, 0);
 
@@ -158,15 +110,15 @@ export function DashboardView({
         </div>
         <div className="coverage-grid">
           <div>
-            <strong>{activeCustomers}</strong>
+            <strong>{summary?.activeCustomerCount ?? 0}</strong>
             <span>Aktif müşteri</span>
           </div>
           <div>
-            <strong>{activeSuppliers}</strong>
+            <strong>{summary?.activeSupplierCount ?? 0}</strong>
             <span>Aktif tedarikçi</span>
           </div>
           <div>
-            <strong>{products.filter((product) => product.isActive).length}</strong>
+            <strong>{summary?.activeProductCount ?? 0}</strong>
             <span>Aktif ürün</span>
           </div>
         </div>
@@ -264,7 +216,7 @@ function StockFlowChart({ points }: { points: Array<{ label: string; inbound: nu
   );
 }
 
-function HorizontalBars({ rows }: { rows: Array<{ label: string; value: number; tone?: string }> }) {
+function HorizontalBars({ rows }: { rows: Array<{ label: string; value: number; tone?: string | null }> }) {
   const max = Math.max(1, ...rows.map((row) => row.value));
 
   return (
@@ -280,169 +232,4 @@ function HorizontalBars({ rows }: { rows: Array<{ label: string; value: number; 
       ))}
     </div>
   );
-}
-
-function buildOperationTrend(
-  orders: SalesOrder[],
-  purchaseRequests: PurchaseRequest[],
-  shipments: Shipment[],
-  returns: ReturnRequest[]
-) {
-  const days = recentDayKeys(14);
-  const counts = new Map(days.map((day) => [day.key, 0]));
-  const dates = [
-    ...orders.map((item) => item.createdAt),
-    ...purchaseRequests.map((item) => item.createdAt),
-    ...shipments.map((item) => item.shippedAt),
-    ...returns.map((item) => item.receivedAt)
-  ];
-
-  for (const value of dates) {
-    const key = toDateKey(value);
-    if (counts.has(key)) {
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-
-  return days.map((day) => ({ label: day.label, total: counts.get(day.key) ?? 0 }));
-}
-
-function buildStockFlow(movements: StockMovement[]) {
-  const days = recentDayKeys(14);
-  const flow = new Map(days.map((day) => [day.key, { inbound: 0, outbound: 0 }]));
-
-  for (const movement of movements) {
-    const key = toDateKey(movement.createdAt);
-    const point = flow.get(key);
-    if (!point) {
-      continue;
-    }
-
-    if (movement.type === "In" || movement.type === "TransferIn") {
-      point.inbound += movement.quantity;
-    } else if (movement.type === "Out" || movement.type === "TransferOut") {
-      point.outbound += movement.quantity;
-    } else if (movement.newQuantity > movement.previousQuantity) {
-      point.inbound += movement.newQuantity - movement.previousQuantity;
-    } else if (movement.previousQuantity > movement.newQuantity) {
-      point.outbound += movement.previousQuantity - movement.newQuantity;
-    }
-  }
-
-  return days.map((day) => ({ label: day.label, ...flow.get(day.key)! }));
-}
-
-function buildWarehouseBars(warehouses: Warehouse[], warehouseStock: WarehouseStock[]) {
-  const quantities = new Map<string, number>();
-  for (const stock of warehouseStock) {
-    quantities.set(stock.warehouseId, (quantities.get(stock.warehouseId) ?? 0) + stock.quantity);
-  }
-
-  return warehouses
-    .filter((warehouse) => warehouse.isActive)
-    .map((warehouse) => ({
-      label: warehouse.name,
-      value: quantities.get(warehouse.id) ?? warehouse.totalQuantity
-    }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 6);
-}
-
-function buildTopOperationProducts(
-  orders: SalesOrder[],
-  purchaseRequests: PurchaseRequest[],
-  shipments: Shipment[],
-  returns: ReturnRequest[]
-) {
-  const totals = new Map<string, { productId: string; sku: string; productName: string; quantity: number }>();
-  const allItems = [
-    ...orders.flatMap((item) => item.items),
-    ...purchaseRequests.flatMap((item) => item.items),
-    ...shipments.flatMap((item) => item.items),
-    ...returns.flatMap((item) => item.items)
-  ];
-
-  for (const item of allItems) {
-    const existing = totals.get(item.productId);
-    if (existing) {
-      existing.quantity += item.quantity;
-    } else {
-      totals.set(item.productId, {
-        productId: item.productId,
-        sku: item.sku,
-        productName: item.productName,
-        quantity: item.quantity
-      });
-    }
-  }
-
-  return [...totals.values()].sort((left, right) => right.quantity - left.quantity).slice(0, 6);
-}
-
-function buildRecentOperations(
-  orders: SalesOrder[],
-  purchaseRequests: PurchaseRequest[],
-  shipments: Shipment[],
-  returns: ReturnRequest[]
-) {
-  return [
-    ...orders.map((item) => ({
-      id: item.id,
-      type: "Sipariş",
-      number: item.orderNumber,
-      party: item.customerName,
-      quantity: item.totalQuantity,
-      status: item.status,
-      date: item.createdAt
-    })),
-    ...purchaseRequests.map((item) => ({
-      id: item.id,
-      type: "Alım",
-      number: item.requestNumber,
-      party: item.supplierName,
-      quantity: item.totalQuantity,
-      status: item.status,
-      date: item.createdAt
-    })),
-    ...shipments.map((item) => ({
-      id: item.id,
-      type: "Sevkiyat",
-      number: item.shipmentNumber,
-      party: item.recipientName,
-      quantity: item.totalQuantity,
-      status: item.status,
-      date: item.shippedAt
-    })),
-    ...returns.map((item) => ({
-      id: item.id,
-      type: "İade",
-      number: item.returnNumber,
-      party: item.customerName,
-      quantity: item.totalQuantity,
-      status: item.status,
-      date: item.receivedAt
-    }))
-  ]
-    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
-    .slice(0, 8);
-}
-
-function recentDayKeys(dayCount: number) {
-  const today = startOfLocalDay(new Date());
-  return Array.from({ length: dayCount }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (dayCount - 1 - index));
-    return {
-      key: toDateKey(date.toISOString()),
-      label: date.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })
-    };
-  });
-}
-
-function toDateKey(value: string) {
-  return startOfLocalDay(new Date(value)).toISOString().slice(0, 10);
-}
-
-function startOfLocalDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

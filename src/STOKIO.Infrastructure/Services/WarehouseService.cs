@@ -17,12 +17,21 @@ public sealed class WarehouseService(
     IdempotencyService? idempotencyService = null,
     DbTransactionRunner? transactionRunner = null) : IWarehouseService
 {
-    public async Task<PagedResult<WarehouseDto>> ListAsync(bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<WarehouseDto>> ListAsync(string? search, bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         EnsureTenant();
         await EnsureWarehouseBaselineAsync(cancellationToken);
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
         var query = dbContext.Warehouses.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            query = query.Where(x =>
+                x.Code.ToLower().Contains(term) ||
+                x.Name.ToLower().Contains(term) ||
+                (x.Address != null && x.Address.ToLower().Contains(term)));
+        }
 
         if (isActive.HasValue)
         {
@@ -137,10 +146,11 @@ public sealed class WarehouseService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<WarehouseStockDto>> ListStockAsync(Guid? warehouseId, Guid? productId, CancellationToken cancellationToken)
+    public async Task<PagedResult<WarehouseStockDto>> ListStockAsync(Guid? warehouseId, Guid? productId, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         EnsureTenant();
         await EnsureWarehouseBaselineAsync(cancellationToken);
+        var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
         var query = dbContext.WarehouseStocks
             .AsNoTracking()
             .Include(x => x.Warehouse)
@@ -157,10 +167,13 @@ public sealed class WarehouseService(
             query = query.Where(x => x.ProductId == productId.Value);
         }
 
-        return await query
-            .Where(x => x.Product.IsActive)
+        query = query.Where(x => x.Product.IsActive);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
             .OrderBy(x => x.Warehouse.Name)
             .ThenBy(x => x.Product.Name)
+            .Skip((normalizedPage - 1) * normalizedPageSize)
+            .Take(normalizedPageSize)
             .Select(x => new WarehouseStockDto(
                 x.WarehouseId,
                 x.Warehouse.Code,
@@ -172,6 +185,8 @@ public sealed class WarehouseService(
                 x.Product.CriticalStockLevel,
                 x.Quantity <= x.Product.CriticalStockLevel))
             .ToListAsync(cancellationToken);
+
+        return new PagedResult<WarehouseStockDto>(items, normalizedPage, normalizedPageSize, totalCount);
     }
 
     public async Task<StockTransferDto> TransferAsync(StockTransferRequest request, CancellationToken cancellationToken)

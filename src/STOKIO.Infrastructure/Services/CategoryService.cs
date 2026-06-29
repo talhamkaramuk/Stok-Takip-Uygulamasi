@@ -12,12 +12,18 @@ public sealed class CategoryService(
     ICurrentTenant currentTenant,
     AuditWriter auditWriter) : ICategoryService
 {
-    public async Task<PagedResult<CategoryDto>> ListAsync(bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<CategoryDto>> ListAsync(string? search, bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         EnsureTenant();
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
 
         var query = dbContext.Categories.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            query = query.Where(x => x.Name.ToLower().Contains(term));
+        }
+
         if (isActive.HasValue)
         {
             query = query.Where(x => x.IsActive == isActive.Value);

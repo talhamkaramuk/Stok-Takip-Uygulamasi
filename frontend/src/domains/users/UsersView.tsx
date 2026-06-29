@@ -1,6 +1,7 @@
 import {
   ClipboardList,
   Plus,
+  Search,
   Users
 } from "lucide-react";
 import type { FormEvent } from "react";
@@ -9,20 +10,16 @@ import { demoPassword } from "../../app/auth/session";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
-import type {
-  ManagedUser
-} from "../../types";
+import type { ManagedUser } from "../../types";
 
 export function UsersView({
   api,
-  users,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
-  users: ManagedUser[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
@@ -32,7 +29,16 @@ export function UsersView({
     password: demoPassword,
     role: "Staff" as "Manager" | "Staff"
   });
-  const userPagination = usePagination(users);
+  const [query, setQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("");
+  const userPage = useServerPage<ManagedUser, { search?: string; isActive?: boolean }>({
+    filters: {
+      search: query.trim() || undefined,
+      isActive: activeFilter === "" ? undefined : activeFilter === "true"
+    },
+    load: api.listUsers,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -41,6 +47,7 @@ export function UsersView({
       await api.createUser(form);
       setForm({ fullName: "", email: "", password: demoPassword, role: "Staff" });
       setNotice({ type: "success", message: "Kullanıcı oluşturuldu." });
+      userPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -82,9 +89,22 @@ export function UsersView({
       </section>
 
       <section className="tool-panel">
-        <div className="section-title">
-          <ClipboardList size={19} />
-          <h2>Kullanıcılar</h2>
+        <div className="section-title spread">
+          <span>
+            <ClipboardList size={19} />
+            <h2>Kullanıcılar</h2>
+          </span>
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ad veya e-posta ara" />
+            </label>
+            <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
+              <option value="">Tüm durumlar</option>
+              <option value="true">Aktif</option>
+              <option value="false">Pasif</option>
+            </select>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -97,7 +117,7 @@ export function UsersView({
               </tr>
             </thead>
             <tbody>
-              {userPagination.items.map((managedUser) => (
+              {userPage.items.map((managedUser) => (
                 <tr key={managedUser.id}>
                   <td>{managedUser.fullName}</td>
                   <td>{managedUser.email}</td>
@@ -113,12 +133,12 @@ export function UsersView({
           </table>
         </div>
         <PaginationControls
-          page={userPagination.page}
-          totalPages={userPagination.totalPages}
-          totalCount={userPagination.totalCount}
-          startIndex={userPagination.startIndex}
-          endIndex={userPagination.endIndex}
-          onPageChange={userPagination.setPage}
+          page={userPage.page}
+          totalPages={userPage.totalPages}
+          totalCount={userPage.totalCount}
+          startIndex={userPage.startIndex}
+          endIndex={userPage.endIndex}
+          onPageChange={userPage.setPage}
         />
       </section>
     </div>

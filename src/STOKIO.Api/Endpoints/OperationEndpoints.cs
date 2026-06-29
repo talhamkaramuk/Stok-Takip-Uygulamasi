@@ -18,13 +18,14 @@ public static class OperationEndpoints
             .WithTags("Sales Orders");
 
         group.MapGet("/", async (
+            string? search,
             SalesOrderStatus? status,
             int? page,
             int? pageSize,
             ISalesOrderService service,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
+            return Results.Ok(await service.ListAsync(search, status, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
@@ -54,13 +55,14 @@ public static class OperationEndpoints
             .WithTags("Purchase Requests");
 
         group.MapGet("/", async (
+            string? search,
             PurchaseRequestStatus? status,
             int? page,
             int? pageSize,
             IPurchaseRequestService service,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
+            return Results.Ok(await service.ListAsync(search, status, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
@@ -119,13 +121,14 @@ public static class OperationEndpoints
             .WithTags("Shipments");
 
         group.MapGet("/", async (
+            string? search,
             ShipmentStatus? status,
             int? page,
             int? pageSize,
             IShipmentService service,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
+            return Results.Ok(await service.ListAsync(search, status, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
@@ -156,13 +159,14 @@ public static class OperationEndpoints
             .WithTags("Returns");
 
         group.MapGet("/", async (
+            string? search,
             ReturnRequestStatus? status,
             int? page,
             int? pageSize,
             IReturnRequestService service,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await service.ListAsync(status, page, pageSize, cancellationToken));
+            return Results.Ok(await service.ListAsync(search, status, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 

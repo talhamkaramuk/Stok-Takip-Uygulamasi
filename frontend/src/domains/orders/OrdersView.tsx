@@ -1,6 +1,7 @@
 import {
   ClipboardCheck,
-  Plus
+  Plus,
+  Search
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
@@ -13,15 +14,16 @@ import type {
   Customer,
   Product,
   SalesOrder,
+  SalesOrderStatus,
   Warehouse
 } from "../../types";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 
 export function OrdersView({
   api,
   products,
   warehouses,
   customers,
-  orders,
   onChanged,
   setNotice
 }: {
@@ -29,14 +31,23 @@ export function OrdersView({
   products: Product[];
   warehouses: Warehouse[];
   customers: Customer[];
-  orders: SalesOrder[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [form, setForm] = useState({ customerId: "", customerName: "", productId: "", warehouseId: "", quantity: 1, notes: "" });
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<SalesOrderStatus | "">("");
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeCustomers = customers.filter((customer) => customer.isActive);
   const selectedWarehouseId = form.warehouseId || getDefaultWarehouseId(activeWarehouses);
+  const orderPage = useServerPage<SalesOrder, { search?: string; status?: SalesOrderStatus }>({
+    filters: {
+      search: query.trim() || undefined,
+      status: status || undefined
+    },
+    load: api.listOrders,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   function selectCustomer(customerId: string) {
     const customer = activeCustomers.find((item) => item.id === customerId);
@@ -56,6 +67,7 @@ export function OrdersView({
       });
       setForm({ customerId: "", customerName: "", productId: "", warehouseId: "", quantity: 1, notes: "" });
       setNotice({ type: "success", message: "Sipariş oluşturuldu." });
+      orderPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -118,19 +130,44 @@ export function OrdersView({
         </form>
       </section>
 
-      <OperationTable
-        title="Siparişler"
-        icon={<ClipboardCheck size={19} />}
-        rows={orders.map((order) => ({
-          id: order.id,
-          number: order.orderNumber,
-          party: order.customerName,
-          warehouse: order.warehouseName || "-",
-          status: order.status,
-          quantity: order.totalQuantity,
-          date: order.createdAt
-        }))}
-      />
+      <div className="content-grid">
+        <section className="tool-panel compact-filter-panel">
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Sipariş no, müşteri veya depo ara" />
+            </label>
+            <select value={status} onChange={(event) => setStatus(event.target.value as SalesOrderStatus | "")}>
+              <option value="">Tüm durumlar</option>
+              <option value="Pending">Bekliyor</option>
+              <option value="PartiallyShipped">Kısmi sevk</option>
+              <option value="Shipped">Sevk edildi</option>
+              <option value="Cancelled">İptal</option>
+            </select>
+          </div>
+        </section>
+        <OperationTable
+          title="Siparişler"
+          icon={<ClipboardCheck size={19} />}
+          rows={orderPage.items.map((order) => ({
+            id: order.id,
+            number: order.orderNumber,
+            party: order.customerName,
+            warehouse: order.warehouseName || "-",
+            status: order.status,
+            quantity: order.totalQuantity,
+            date: order.createdAt
+          }))}
+          pagination={{
+            page: orderPage.page,
+            totalPages: orderPage.totalPages,
+            totalCount: orderPage.totalCount,
+            startIndex: orderPage.startIndex,
+            endIndex: orderPage.endIndex,
+            onPageChange: orderPage.setPage
+          }}
+        />
+      </div>
     </div>
   );
 }

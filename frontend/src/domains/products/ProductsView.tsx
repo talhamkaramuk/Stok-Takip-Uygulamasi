@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import { BarcodeScanner } from "../../shared/ui/BarcodeScanner";
 import { appendBarcode } from "../../shared/utils/inventory";
@@ -20,18 +20,17 @@ import type {
 
 export function ProductsView({
   api,
-  products,
   categories,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
-  products: Product[];
   categories: Category[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [form, setForm] = useState({
     sku: "",
     name: "",
@@ -41,17 +40,14 @@ export function ProductsView({
     initialStock: 0,
     barcodes: ""
   });
-
-  const filteredProducts = products.filter((product) => {
-    const term = query.trim().toLowerCase();
-    if (!term) {
-      return true;
-    }
-
-    return [product.sku, product.name, product.categoryName ?? "", ...product.barcodes]
-      .some((value) => value.toLowerCase().includes(term));
+  const productPage = useServerPage<Product, { search?: string; categoryId?: string }>({
+    filters: {
+      search: query.trim() || undefined,
+      categoryId: categoryId || undefined
+    },
+    load: api.listProducts,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
   });
-  const productPagination = usePagination(filteredProducts);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -65,6 +61,7 @@ export function ProductsView({
       });
       setForm({ sku: "", name: "", description: "", categoryName: "", criticalStockLevel: 1, initialStock: 0, barcodes: "" });
       setNotice({ type: "success", message: "Ürün kaydedildi." });
+      productPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -136,10 +133,22 @@ export function ProductsView({
             <Boxes size={19} />
             <h2>Ürünler</h2>
           </span>
-          <label className="search-field">
-            <Search size={16} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} />
-          </label>
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="SKU, ad veya barkod ara"
+              />
+            </label>
+            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+              <option value="">Tüm kategoriler</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -153,7 +162,7 @@ export function ProductsView({
               </tr>
             </thead>
             <tbody>
-              {productPagination.items.map((product) => (
+              {productPage.items.map((product) => (
                 <tr key={product.id}>
                   <td>{product.sku}</td>
                   <td>{product.name}</td>
@@ -170,12 +179,12 @@ export function ProductsView({
           </table>
         </div>
         <PaginationControls
-          page={productPagination.page}
-          totalPages={productPagination.totalPages}
-          totalCount={productPagination.totalCount}
-          startIndex={productPagination.startIndex}
-          endIndex={productPagination.endIndex}
-          onPageChange={productPagination.setPage}
+          page={productPage.page}
+          totalPages={productPage.totalPages}
+          totalCount={productPage.totalCount}
+          startIndex={productPage.startIndex}
+          endIndex={productPage.endIndex}
+          onPageChange={productPage.setPage}
         />
       </section>
     </div>

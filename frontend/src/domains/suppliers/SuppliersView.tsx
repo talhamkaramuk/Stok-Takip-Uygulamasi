@@ -1,19 +1,18 @@
 import {
   Check,
   ClipboardList,
-  Handshake
+  Handshake,
+  Search
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import { emptyToNull } from "../../shared/utils/inventory";
-import type {
-  Supplier
-} from "../../types";
+import type { Supplier } from "../../types";
 
 const emptySupplierForm = {
   code: "",
@@ -29,18 +28,25 @@ const emptySupplierForm = {
 
 export function SuppliersView({
   api,
-  suppliers,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
-  suppliers: Supplier[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptySupplierForm);
-  const supplierPagination = usePagination(suppliers);
+  const [query, setQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("");
+  const supplierPage = useServerPage<Supplier, { search?: string; isActive?: boolean }>({
+    filters: {
+      search: query.trim() || undefined,
+      isActive: activeFilter === "" ? undefined : activeFilter === "true"
+    },
+    load: api.listSuppliers,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   function edit(supplier: Supplier) {
     setEditingId(supplier.id);
@@ -85,6 +91,7 @@ export function SuppliersView({
         setNotice({ type: "success", message: "Tedarikçi kaydedildi." });
       }
       reset();
+      supplierPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -99,6 +106,7 @@ export function SuppliersView({
       if (editingId === id) {
         reset();
       }
+      supplierPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -172,9 +180,22 @@ export function SuppliersView({
       </section>
 
       <section className="tool-panel">
-        <div className="section-title">
-          <ClipboardList size={19} />
-          <h2>Tedarikçiler</h2>
+        <div className="section-title spread">
+          <span>
+            <ClipboardList size={19} />
+            <h2>Tedarikçiler</h2>
+          </span>
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Kod, unvan veya iletişim ara" />
+            </label>
+            <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
+              <option value="">Tüm durumlar</option>
+              <option value="true">Aktif</option>
+              <option value="false">Pasif</option>
+            </select>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -188,7 +209,7 @@ export function SuppliersView({
               </tr>
             </thead>
             <tbody>
-              {supplierPagination.items.map((supplier) => (
+              {supplierPage.items.map((supplier) => (
                 <tr key={supplier.id}>
                   <td>{supplier.code}</td>
                   <td>{supplier.name}</td>
@@ -208,12 +229,12 @@ export function SuppliersView({
           </table>
         </div>
         <PaginationControls
-          page={supplierPagination.page}
-          totalPages={supplierPagination.totalPages}
-          totalCount={supplierPagination.totalCount}
-          startIndex={supplierPagination.startIndex}
-          endIndex={supplierPagination.endIndex}
-          onPageChange={supplierPagination.setPage}
+          page={supplierPage.page}
+          totalPages={supplierPage.totalPages}
+          totalCount={supplierPage.totalCount}
+          startIndex={supplierPage.startIndex}
+          endIndex={supplierPage.endIndex}
+          onPageChange={supplierPage.setPage}
         />
       </section>
     </div>

@@ -60,6 +60,19 @@ export function statusLabel(status: string) {
   return labels[status] ?? status;
 }
 
+export function statusMovementLabel(type: string) {
+  const labels: Record<string, string> = {
+    In: "Giriş",
+    Out: "Çıkış",
+    Adjustment: "Düzeltme",
+    CountCorrection: "Sayım düzeltme",
+    TransferIn: "Transfer giriş",
+    TransferOut: "Transfer çıkış"
+  };
+
+  return labels[type] ?? type;
+}
+
 export function formatDate(value: string) {
   return new Date(value).toLocaleString("tr-TR");
 }

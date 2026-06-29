@@ -15,12 +15,20 @@ public sealed class UserManagementService(
     IPasswordHasher passwordHasher,
     AuditWriter auditWriter) : IUserManagementService
 {
-    public async Task<PagedResult<UserDto>> ListAsync(bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<UserDto>> ListAsync(string? search, bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         EnsureTenant();
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
 
         var query = dbContext.ApplicationUsers.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            query = query.Where(x =>
+                x.FullName.ToLower().Contains(term) ||
+                x.Email.ToLower().Contains(term));
+        }
+
         if (isActive.HasValue)
         {
             query = query.Where(x => x.IsActive == isActive.Value);

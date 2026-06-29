@@ -1,6 +1,7 @@
 import {
   ClipboardList,
   Plus,
+  Search,
   Tags
 } from "lucide-react";
 import type { FormEvent } from "react";
@@ -8,25 +9,26 @@ import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
-import type {
-  Category
-} from "../../types";
+import type { Category } from "../../types";
 
 export function CategoriesView({
   api,
-  categories,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
-  categories: Category[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [name, setName] = useState("");
-  const categoryPagination = usePagination(categories);
+  const [query, setQuery] = useState("");
+  const categoryPage = useServerPage<Category, { search?: string }>({
+    filters: { search: query.trim() || undefined },
+    load: api.listCategories,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -35,6 +37,7 @@ export function CategoriesView({
       await api.createCategory({ name });
       setName("");
       setNotice({ type: "success", message: "Kategori kaydedildi." });
+      categoryPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -61,9 +64,15 @@ export function CategoriesView({
       </section>
 
       <section className="tool-panel">
-        <div className="section-title">
-          <ClipboardList size={19} />
-          <h2>Kategoriler</h2>
+        <div className="section-title spread">
+          <span>
+            <ClipboardList size={19} />
+            <h2>Kategoriler</h2>
+          </span>
+          <label className="search-field">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Kategori ara" />
+          </label>
         </div>
         <div className="table-wrap">
           <table>
@@ -75,7 +84,7 @@ export function CategoriesView({
               </tr>
             </thead>
             <tbody>
-              {categoryPagination.items.map((category) => (
+              {categoryPage.items.map((category) => (
                 <tr key={category.id}>
                   <td>{category.name}</td>
                   <td>{category.productCount}</td>
@@ -90,26 +99,14 @@ export function CategoriesView({
           </table>
         </div>
         <PaginationControls
-          page={categoryPagination.page}
-          totalPages={categoryPagination.totalPages}
-          totalCount={categoryPagination.totalCount}
-          startIndex={categoryPagination.startIndex}
-          endIndex={categoryPagination.endIndex}
-          onPageChange={categoryPagination.setPage}
+          page={categoryPage.page}
+          totalPages={categoryPage.totalPages}
+          totalCount={categoryPage.totalCount}
+          startIndex={categoryPage.startIndex}
+          endIndex={categoryPage.endIndex}
+          onPageChange={categoryPage.setPage}
         />
       </section>
     </div>
   );
 }
-
-const emptyCustomerForm = {
-  code: "",
-  name: "",
-  contactName: "",
-  email: "",
-  phone: "",
-  taxNumber: "",
-  address: "",
-  notes: "",
-  isActive: true
-};

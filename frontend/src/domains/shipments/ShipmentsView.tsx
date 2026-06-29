@@ -1,10 +1,12 @@
 import {
+  Search,
   Truck
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import { OperationTable } from "../../shared/ui/OperationTable";
 import { getDefaultWarehouseId } from "../../shared/utils/inventory";
@@ -13,6 +15,7 @@ import type {
   Product,
   SalesOrder,
   Shipment,
+  ShipmentStatus,
   Warehouse
 } from "../../types";
 
@@ -22,7 +25,6 @@ export function ShipmentsView({
   warehouses,
   customers,
   orders,
-  shipments,
   onChanged,
   setNotice
 }: {
@@ -31,13 +33,22 @@ export function ShipmentsView({
   warehouses: Warehouse[];
   customers: Customer[];
   orders: SalesOrder[];
-  shipments: Shipment[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
   const [form, setForm] = useState({ salesOrderId: "", customerId: "", recipientName: "", productId: "", warehouseId: "", quantity: 1, trackingNumber: "", notes: "" });
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<ShipmentStatus | "">("");
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
   const activeCustomers = customers.filter((customer) => customer.isActive);
+  const shipmentPage = useServerPage<Shipment, { search?: string; status?: ShipmentStatus }>({
+    filters: {
+      search: query.trim() || undefined,
+      status: status || undefined
+    },
+    load: api.listShipments,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
   const shippableOrders = orders.filter((order) =>
     order.status !== "Draft" &&
     order.status !== "Cancelled" &&
@@ -78,6 +89,7 @@ export function ShipmentsView({
       });
       setForm({ salesOrderId: "", customerId: "", recipientName: "", productId: "", warehouseId: "", quantity: 1, trackingNumber: "", notes: "" });
       setNotice({ type: "success", message: "Sevkiyat oluşturuldu ve stok çıkışı işlendi." });
+      shipmentPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -149,19 +161,42 @@ export function ShipmentsView({
         </form>
       </section>
 
-      <OperationTable
-        title="Sevkiyatlar"
-        icon={<Truck size={19} />}
-        rows={shipments.map((shipment) => ({
-          id: shipment.id,
-          number: shipment.shipmentNumber,
-          party: shipment.recipientName,
-          warehouse: shipment.warehouseName || "-",
-          status: shipment.status,
-          quantity: shipment.totalQuantity,
-          date: shipment.shippedAt
-        }))}
-      />
+      <div className="content-grid">
+        <section className="tool-panel compact-filter-panel">
+          <div className="table-filter-row">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Sevkiyat no, alıcı, takip no veya depo ara" />
+            </label>
+            <select value={status} onChange={(event) => setStatus(event.target.value as ShipmentStatus | "")}>
+              <option value="">Tüm durumlar</option>
+              <option value="Completed">Tamamlandı</option>
+              <option value="Cancelled">İptal</option>
+            </select>
+          </div>
+        </section>
+        <OperationTable
+          title="Sevkiyatlar"
+          icon={<Truck size={19} />}
+          rows={shipmentPage.items.map((shipment) => ({
+            id: shipment.id,
+            number: shipment.shipmentNumber,
+            party: shipment.recipientName,
+            warehouse: shipment.warehouseName || "-",
+            status: shipment.status,
+            quantity: shipment.totalQuantity,
+            date: shipment.shippedAt
+          }))}
+          pagination={{
+            page: shipmentPage.page,
+            totalPages: shipmentPage.totalPages,
+            totalCount: shipmentPage.totalCount,
+            startIndex: shipmentPage.startIndex,
+            endIndex: shipmentPage.endIndex,
+            onPageChange: shipmentPage.setPage
+          }}
+        />
+      </div>
     </div>
   );
 }

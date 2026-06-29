@@ -16,7 +16,7 @@ public sealed class SalesOrderService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter) : ISalesOrderService
 {
-    public async Task<PagedResult<SalesOrderDto>> ListAsync(SalesOrderStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<SalesOrderDto>> ListAsync(string? search, SalesOrderStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         OperationGuards.EnsureTenant(currentTenant);
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
@@ -29,6 +29,15 @@ public sealed class SalesOrderService(
         if (status.HasValue)
         {
             query = query.Where(x => x.Status == status.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x =>
+                x.OrderNumber.ToLower().Contains(term) ||
+                x.CustomerName.ToLower().Contains(term) ||
+                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -88,7 +97,7 @@ public sealed class PurchaseRequestService(
     IdempotencyService? idempotencyService = null,
     DbTransactionRunner? transactionRunner = null) : IPurchaseRequestService
 {
-    public async Task<PagedResult<PurchaseRequestDto>> ListAsync(PurchaseRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<PurchaseRequestDto>> ListAsync(string? search, PurchaseRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         OperationGuards.EnsureTenant(currentTenant);
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
@@ -101,6 +110,15 @@ public sealed class PurchaseRequestService(
         if (status.HasValue)
         {
             query = query.Where(x => x.Status == status.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x =>
+                x.RequestNumber.ToLower().Contains(term) ||
+                x.SupplierName.ToLower().Contains(term) ||
+                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -273,7 +291,7 @@ public sealed class ShipmentService(
     IdempotencyService? idempotencyService = null,
     DbTransactionRunner? transactionRunner = null) : IShipmentService
 {
-    public async Task<PagedResult<ShipmentDto>> ListAsync(ShipmentStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<ShipmentDto>> ListAsync(string? search, ShipmentStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         OperationGuards.EnsureTenant(currentTenant);
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
@@ -287,6 +305,17 @@ public sealed class ShipmentService(
         if (status.HasValue)
         {
             query = query.Where(x => x.Status == status.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x =>
+                x.ShipmentNumber.ToLower().Contains(term) ||
+                x.RecipientName.ToLower().Contains(term) ||
+                (x.TrackingNumber != null && x.TrackingNumber.ToLower().Contains(term)) ||
+                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)) ||
+                (x.SalesOrder != null && x.SalesOrder.OrderNumber.ToLower().Contains(term)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -419,7 +448,7 @@ public sealed class ReturnRequestService(
     IdempotencyService? idempotencyService = null,
     DbTransactionRunner? transactionRunner = null) : IReturnRequestService
 {
-    public async Task<PagedResult<ReturnRequestDto>> ListAsync(ReturnRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<ReturnRequestDto>> ListAsync(string? search, ReturnRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
         OperationGuards.EnsureTenant(currentTenant);
         var (normalizedPage, normalizedPageSize) = Paging.Normalize(page, pageSize);
@@ -433,6 +462,17 @@ public sealed class ReturnRequestService(
         if (status.HasValue)
         {
             query = query.Where(x => x.Status == status.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x =>
+                x.ReturnNumber.ToLower().Contains(term) ||
+                x.CustomerName.ToLower().Contains(term) ||
+                x.Reason.ToLower().Contains(term) ||
+                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)) ||
+                (x.SalesOrder != null && x.SalesOrder.OrderNumber.ToLower().Contains(term)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);

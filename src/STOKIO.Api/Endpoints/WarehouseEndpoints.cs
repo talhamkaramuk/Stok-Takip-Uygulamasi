@@ -15,13 +15,14 @@ public static class WarehouseEndpoints
             .WithTags("Warehouses");
 
         group.MapGet("/", async (
+            string? search,
             bool? isActive,
             int? page,
             int? pageSize,
             IWarehouseService warehouseService,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await warehouseService.ListAsync(isActive, page, pageSize, cancellationToken));
+            return Results.Ok(await warehouseService.ListAsync(search, isActive, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 
@@ -69,10 +70,12 @@ public static class WarehouseEndpoints
         group.MapGet("/stocks", async (
             Guid? warehouseId,
             Guid? productId,
+            int? page,
+            int? pageSize,
             IWarehouseService warehouseService,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await warehouseService.ListStockAsync(warehouseId, productId, cancellationToken));
+            return Results.Ok(await warehouseService.ListStockAsync(warehouseId, productId, page, pageSize, cancellationToken));
         })
         .RequireRateLimiting(RateLimitPolicyNames.GeneralRead);
 

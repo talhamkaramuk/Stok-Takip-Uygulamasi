@@ -8,6 +8,49 @@ export type PagedResult<T> = {
   totalPages: number;
 };
 
+export type DashboardSummary = {
+  activeProductCount: number;
+  productCount: number;
+  totalStock: number;
+  criticalStockCount: number;
+  categoryCount: number;
+  customerCount: number;
+  activeCustomerCount: number;
+  supplierCount: number;
+  activeSupplierCount: number;
+  warehouseCount: number;
+  activeWarehouseCount: number;
+  userCount: number;
+  activeUserCount: number;
+  stockMovementCount: number;
+  stockInMovementCount: number;
+  stockOutMovementCount: number;
+  countCorrectionMovementCount: number;
+  orderCount: number;
+  pendingOrderCount: number;
+  partiallyShippedOrderCount: number;
+  shippedOrderCount: number;
+  cancelledOrderCount: number;
+  purchaseRequestCount: number;
+  pendingPurchaseRequestCount: number;
+  approvedPurchaseRequestCount: number;
+  partiallyReceivedPurchaseRequestCount: number;
+  receivedPurchaseRequestCount: number;
+  shipmentCount: number;
+  completedShipmentCount: number;
+  cancelledShipmentCount: number;
+  returnCount: number;
+  receivedReturnCount: number;
+  rejectedReturnCount: number;
+  operationTrend: Array<{ label: string; total: number }>;
+  stockFlow: Array<{ label: string; inbound: number; outbound: number }>;
+  operationBars: Array<{ label: string; value: number; tone?: string | null }>;
+  pendingJobs: Array<{ label: string; value: number }>;
+  warehouseBars: Array<{ label: string; value: number; tone?: string | null }>;
+  topProducts: Array<{ productId: string; sku: string; productName: string; quantity: number }>;
+  recentOperations: Array<{ id: string; type: string; number: string; party: string; quantity: number; status: string; date: string }>;
+};
+
 export type AuthResponse = {
   accessToken: string;
   expiresAt: string;

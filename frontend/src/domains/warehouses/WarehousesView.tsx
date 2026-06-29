@@ -2,14 +2,15 @@ import {
   ArrowLeftRight,
   Boxes,
   ClipboardList,
-  Plus
+  Plus,
+  Search
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { ApiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/errors/getErrorMessage";
 import { PaginationControls } from "../../shared/pagination/PaginationControls";
-import { usePagination } from "../../shared/pagination/usePagination";
+import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import type {
   Product,
@@ -21,14 +22,12 @@ export function WarehousesView({
   api,
   products,
   warehouses,
-  warehouseStock,
   onChanged,
   setNotice
 }: {
   api: ApiClient;
   products: Product[];
   warehouses: Warehouse[];
-  warehouseStock: WarehouseStock[];
   onChanged: () => void;
   setNotice: (notice: Notice | null) => void;
 }) {
@@ -45,8 +44,27 @@ export function WarehousesView({
     quantity: 1,
     reason: ""
   });
-  const warehousePagination = usePagination(warehouses);
-  const warehouseStockPagination = usePagination(warehouseStock);
+  const [warehouseQuery, setWarehouseQuery] = useState("");
+  const [warehouseActiveFilter, setWarehouseActiveFilter] = useState("");
+  const [stockWarehouseId, setStockWarehouseId] = useState("");
+  const [stockProductId, setStockProductId] = useState("");
+  const activeWarehouses = warehouses.filter((warehouse) => warehouse.isActive);
+  const warehousePage = useServerPage<Warehouse, { search?: string; isActive?: boolean }>({
+    filters: {
+      search: warehouseQuery.trim() || undefined,
+      isActive: warehouseActiveFilter === "" ? undefined : warehouseActiveFilter === "true"
+    },
+    load: api.listWarehouses,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
+  const warehouseStockPage = useServerPage<WarehouseStock, { warehouseId?: string; productId?: string }>({
+    filters: {
+      warehouseId: stockWarehouseId || undefined,
+      productId: stockProductId || undefined
+    },
+    load: api.listWarehouseStock,
+    onError: (error) => setNotice({ type: "error", message: getErrorMessage(error) })
+  });
 
   async function createWarehouse(event: FormEvent) {
     event.preventDefault();
@@ -60,6 +78,7 @@ export function WarehousesView({
       });
       setWarehouseForm({ code: "", name: "", address: "", isDefault: false });
       setNotice({ type: "success", message: "Depo oluşturuldu." });
+      warehousePage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -79,6 +98,8 @@ export function WarehousesView({
       });
       setTransferForm({ productId: "", fromWarehouseId: "", toWarehouseId: "", quantity: 1, reason: "" });
       setNotice({ type: "success", message: "Depo transferi işlendi." });
+      warehousePage.reload();
+      warehouseStockPage.reload();
       onChanged();
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
@@ -145,7 +166,7 @@ export function WarehousesView({
                 Kaynak depo
                 <select value={transferForm.fromWarehouseId} onChange={(event) => setTransferForm({ ...transferForm, fromWarehouseId: event.target.value })} required>
                   <option value="">Seç</option>
-                  {warehouses.filter((warehouse) => warehouse.isActive).map((warehouse) => (
+                  {activeWarehouses.map((warehouse) => (
                     <option key={warehouse.id} value={warehouse.id}>
                       {warehouse.code} · {warehouse.name}
                     </option>
@@ -156,7 +177,7 @@ export function WarehousesView({
                 Hedef depo
                 <select value={transferForm.toWarehouseId} onChange={(event) => setTransferForm({ ...transferForm, toWarehouseId: event.target.value })} required>
                   <option value="">Seç</option>
-                  {warehouses.filter((warehouse) => warehouse.isActive).map((warehouse) => (
+                  {activeWarehouses.map((warehouse) => (
                     <option key={warehouse.id} value={warehouse.id}>
                       {warehouse.code} · {warehouse.name}
                     </option>
@@ -182,9 +203,22 @@ export function WarehousesView({
 
       <div className="content-grid two-columns">
         <section className="tool-panel">
-          <div className="section-title">
-            <ClipboardList size={19} />
-            <h2>Depolar</h2>
+          <div className="section-title spread">
+            <span>
+              <ClipboardList size={19} />
+              <h2>Depolar</h2>
+            </span>
+            <div className="table-filter-row">
+              <label className="search-field">
+                <Search size={16} />
+                <input value={warehouseQuery} onChange={(event) => setWarehouseQuery(event.target.value)} placeholder="Kod, depo veya adres ara" />
+              </label>
+              <select value={warehouseActiveFilter} onChange={(event) => setWarehouseActiveFilter(event.target.value)}>
+                <option value="">Tüm durumlar</option>
+                <option value="true">Aktif</option>
+                <option value="false">Pasif</option>
+              </select>
+            </div>
           </div>
           <div className="table-wrap">
             <table>
@@ -198,7 +232,7 @@ export function WarehousesView({
                 </tr>
               </thead>
               <tbody>
-                {warehousePagination.items.map((warehouse) => (
+                {warehousePage.items.map((warehouse) => (
                   <tr key={warehouse.id}>
                     <td>{warehouse.code}</td>
                     <td>{warehouse.name}</td>
@@ -215,19 +249,35 @@ export function WarehousesView({
             </table>
           </div>
           <PaginationControls
-            page={warehousePagination.page}
-            totalPages={warehousePagination.totalPages}
-            totalCount={warehousePagination.totalCount}
-            startIndex={warehousePagination.startIndex}
-            endIndex={warehousePagination.endIndex}
-            onPageChange={warehousePagination.setPage}
+            page={warehousePage.page}
+            totalPages={warehousePage.totalPages}
+            totalCount={warehousePage.totalCount}
+            startIndex={warehousePage.startIndex}
+            endIndex={warehousePage.endIndex}
+            onPageChange={warehousePage.setPage}
           />
         </section>
 
         <section className="tool-panel">
-          <div className="section-title">
-            <Boxes size={19} />
-            <h2>Depo stokları</h2>
+          <div className="section-title spread">
+            <span>
+              <Boxes size={19} />
+              <h2>Depo stokları</h2>
+            </span>
+            <div className="table-filter-row">
+              <select value={stockWarehouseId} onChange={(event) => setStockWarehouseId(event.target.value)}>
+                <option value="">Tüm depolar</option>
+                {activeWarehouses.map((warehouse) => (
+                  <option key={warehouse.id} value={warehouse.id}>{warehouse.code} - {warehouse.name}</option>
+                ))}
+              </select>
+              <select value={stockProductId} onChange={(event) => setStockProductId(event.target.value)}>
+                <option value="">Tüm ürünler</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>{product.sku} - {product.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="table-wrap">
             <table>
@@ -240,7 +290,7 @@ export function WarehousesView({
                 </tr>
               </thead>
               <tbody>
-                {warehouseStockPagination.items.map((item) => (
+                {warehouseStockPage.items.map((item) => (
                   <tr key={`${item.warehouseId}-${item.productId}`}>
                     <td>{item.warehouseCode}</td>
                     <td>{item.sku}</td>
@@ -254,12 +304,12 @@ export function WarehousesView({
             </table>
           </div>
           <PaginationControls
-            page={warehouseStockPagination.page}
-            totalPages={warehouseStockPagination.totalPages}
-            totalCount={warehouseStockPagination.totalCount}
-            startIndex={warehouseStockPagination.startIndex}
-            endIndex={warehouseStockPagination.endIndex}
-            onPageChange={warehouseStockPagination.setPage}
+            page={warehouseStockPage.page}
+            totalPages={warehouseStockPage.totalPages}
+            totalCount={warehouseStockPage.totalCount}
+            startIndex={warehouseStockPage.startIndex}
+            endIndex={warehouseStockPage.endIndex}
+            onPageChange={warehouseStockPage.setPage}
           />
         </section>
       </div>
