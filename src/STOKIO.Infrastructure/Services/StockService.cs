@@ -15,7 +15,8 @@ public sealed class StockService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter,
     IdempotencyService? idempotencyService = null,
-    DbTransactionRunner? transactionRunner = null) : IStockService
+    DbTransactionRunner? transactionRunner = null,
+    IMetricsRecorder? metricsRecorder = null) : IStockService
 {
     public async Task<StockMovementDto> CreateMovementAsync(CreateStockMovementRequest request, CancellationToken cancellationToken)
     {
@@ -114,6 +115,11 @@ public sealed class StockService(
             {
                 await dbContext.SaveChangesAsync(ct);
             }
+
+            metricsRecorder?.RecordStockMovement(
+                movement.Type,
+                movement.Quantity,
+                product.CurrentStock <= product.CriticalStockLevel);
 
             return dto;
         }, cancellationToken);

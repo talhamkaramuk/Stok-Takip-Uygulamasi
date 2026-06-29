@@ -16,7 +16,8 @@ public sealed class InventoryCountService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter,
     IdempotencyService? idempotencyService = null,
-    DbTransactionRunner? transactionRunner = null) : IInventoryCountService
+    DbTransactionRunner? transactionRunner = null,
+    IMetricsRecorder? metricsRecorder = null) : IInventoryCountService
 {
     public async Task<InventoryCountDto> CreateAsync(CreateInventoryCountRequest request, CancellationToken cancellationToken)
     {
@@ -133,6 +134,7 @@ public sealed class InventoryCountService(
                     .Where(x => x.CountedQuantity != x.ExpectedQuantity)
                     .OrderBy(x => x.ProductId)
                     .ToList();
+                var stockMetricEvents = new List<(StockMovementType Type, int Quantity, bool IsCritical)>();
                 var warehouseStocks = new Dictionary<Guid, WarehouseStock>();
                 foreach (var item in differenceItems)
                 {
@@ -163,7 +165,26 @@ public sealed class InventoryCountService(
                         Reason = $"Inventory count correction: {count.Name}",
                         PerformedByUserId = currentUser.UserId
                     });
+                    stockMetricEvents.Add((StockMovementType.CountCorrection, item.CountedQuantity, item.Product.CurrentStock <= item.Product.CriticalStockLevel));
                 }
+
+                count.Status = InventoryCountStatus.Closed;
+                count.ClosedAt = clock.UtcNow;
+                auditWriter.AddSnapshot("inventory_count.closed", nameof(InventoryCount), count.Id, null, CountSnapshot(count), new { request.ApplyDifferences });
+                await dbContext.SaveChangesAsync(ct);
+                var appliedDifferencesDto = await ToDtoAsync(count, ct);
+
+                if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(InventoryCount), count.Id.ToString(), appliedDifferencesDto, ct))
+                {
+                    await dbContext.SaveChangesAsync(ct);
+                }
+
+                foreach (var metricEvent in stockMetricEvents)
+                {
+                    metricsRecorder?.RecordStockMovement(metricEvent.Type, metricEvent.Quantity, metricEvent.IsCritical);
+                }
+
+                return appliedDifferencesDto;
             }
 
             count.Status = InventoryCountStatus.Closed;

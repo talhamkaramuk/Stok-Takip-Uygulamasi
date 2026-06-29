@@ -53,6 +53,10 @@ export const tabMeta: Record<TabKey, { title: string; description: string }> = {
     title: "Kullanıcılar",
     description: "Ekip üyelerini ve rol bazlı erişimleri yönetin."
   },
+  audit: {
+    title: "Denetim",
+    description: "Audit loglarını, request metriklerini ve kritik operasyon sinyallerini izleyin."
+  },
   profile: {
     title: "Profilim",
     description: "Oturumdaki kullanıcı, rol ve çalışma alanı bilgilerini görüntüleyin."

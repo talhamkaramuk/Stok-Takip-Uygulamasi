@@ -1,10 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using STOKIO.Application.Abstractions;
 using STOKIO.Application.Common;
 
 namespace STOKIO.Api.Middleware;
 
-public sealed class ProblemDetailsMiddleware(RequestDelegate next, ILogger<ProblemDetailsMiddleware> logger, IHostEnvironment environment)
+public sealed class ProblemDetailsMiddleware(
+    RequestDelegate next,
+    ILogger<ProblemDetailsMiddleware> logger,
+    IHostEnvironment environment)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -55,6 +59,12 @@ public sealed class ProblemDetailsMiddleware(RequestDelegate next, ILogger<Probl
             Detail = detail,
             Type = $"https://stokio.local/problems/{code}"
         };
+        var correlationId = context.RequestServices.GetRequiredService<ICorrelationContext>().CorrelationId;
+        if (!string.IsNullOrWhiteSpace(correlationId))
+        {
+            problem.Extensions["correlationId"] = correlationId;
+        }
+
         await context.Response.WriteAsJsonAsync(problem);
     }
 }

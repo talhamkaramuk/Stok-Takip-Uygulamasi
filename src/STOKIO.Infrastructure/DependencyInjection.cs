@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IExportService, ExportService>();
         services.AddScoped<IExportJobService, ExportJobService>();
         services.AddScoped<IExportJobProcessor, ExportJobProcessor>();
+        services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddSingleton<IExportJobQueue, ExportJobQueue>();
         services.AddSingleton<ExportJobFileStore>();

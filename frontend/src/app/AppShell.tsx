@@ -15,6 +15,7 @@ import {
   RotateCcw,
   ScanLine,
   ShieldCheck,
+  ScrollText,
   Tags,
   Truck,
   UserCircle,
@@ -22,6 +23,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { AuditLogsView } from "../domains/audit/AuditLogsView";
 import { CountView } from "../domains/counts/CountView";
 import { CustomersView } from "../domains/customers/CustomersView";
 import { DashboardView } from "../domains/dashboard/DashboardView";
@@ -333,6 +335,9 @@ export function AppShell({
           {user.role === "Owner" && (
             <TabButton active={tab === "users"} onClick={() => changeTab("users")} icon={<Users size={18} />} label="Kullanıcılar" />
           )}
+          {user.role === "Owner" && (
+            <TabButton active={tab === "audit"} onClick={() => changeTab("audit")} icon={<ScrollText size={18} />} label="Denetim" />
+          )}
           <TabButton active={tab === "reports"} onClick={() => changeTab("reports")} icon={<BarChart3 size={18} />} label="Raporlar" />
         </nav>
 
@@ -562,6 +567,12 @@ export function AppShell({
           <UsersView
             api={api}
             onChanged={() => void refresh()}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "audit" && user.role === "Owner" && (
+          <AuditLogsView
+            api={api}
             setNotice={setNotice}
           />
         )}

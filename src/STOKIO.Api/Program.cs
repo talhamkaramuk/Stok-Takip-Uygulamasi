@@ -9,6 +9,7 @@ using STOKIO.Api.Configuration;
 using STOKIO.Api.Endpoints;
 using STOKIO.Api.HostedServices;
 using STOKIO.Api.Middleware;
+using STOKIO.Api.Observability;
 using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Validation;
@@ -36,9 +37,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterTenantRequestValidator>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICorrelationContext, CorrelationContext>();
 builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IIdempotencyKeyAccessor, HttpIdempotencyKeyAccessor>();
+builder.Services.AddSingleton<IMetricsRecorder, InMemoryMetricsRecorder>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<ExportJobWorker>();
 
@@ -104,6 +107,7 @@ builder.Services.AddStokioRateLimiting();
 
 var app = builder.Build();
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ProblemDetailsMiddleware>();
 
 if (app.Environment.IsDevelopment())
@@ -120,6 +124,7 @@ app.UseCors("Frontend");
 app.UseMiddleware<LegacyApiDeprecationMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<TenantContextMiddleware>();
+app.UseMiddleware<RequestTelemetryMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
 
@@ -151,27 +156,68 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "STOKIO.Ap
     .AllowAnonymous()
     .WithTags("Health");
 
-app.MapGet("/health/ready", async (StokioDbContext dbContext, CancellationToken cancellationToken) =>
+app.MapGet("/health/ready", async (
+        StokioDbContext dbContext,
+        ExportJobFileStore exportJobFileStore,
+        IMetricsRecorder metricsRecorder,
+        CancellationToken cancellationToken) =>
     {
+        var databaseStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        var databaseLatencyMs = 0d;
+        var databaseAvailable = false;
+        var exportStorageAvailable = false;
+        string[] pendingMigrations = [];
+        string[] appliedMigrations = [];
+
         try
         {
-            var canConnect = await dbContext.Database.CanConnectAsync(cancellationToken);
+            databaseAvailable = await dbContext.Database.CanConnectAsync(cancellationToken);
+            databaseLatencyMs = System.Diagnostics.Stopwatch.GetElapsedTime(databaseStartedAt).TotalMilliseconds;
+            metricsRecorder.RecordDatabaseReadiness(databaseAvailable, databaseLatencyMs);
 
-            if (!canConnect)
+            if (databaseAvailable && dbContext.Database.IsRelational())
             {
-                return Results.Json(
-                    new { status = "unavailable", service = "STOKIO.Api", database = "unavailable" },
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
+                pendingMigrations = (await dbContext.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
+                appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToArray();
             }
 
-            return Results.Ok(new { status = "ready", service = "STOKIO.Api", database = "available" });
+            await exportJobFileStore.CheckWritableAsync(cancellationToken);
+            exportStorageAvailable = true;
         }
         catch
         {
-            return Results.Json(
-                new { status = "unavailable", service = "STOKIO.Api", database = "unavailable" },
-                statusCode: StatusCodes.Status503ServiceUnavailable);
+            if (databaseLatencyMs <= 0)
+            {
+                databaseLatencyMs = System.Diagnostics.Stopwatch.GetElapsedTime(databaseStartedAt).TotalMilliseconds;
+                metricsRecorder.RecordDatabaseReadiness(succeeded: false, databaseLatencyMs);
+            }
         }
+
+        var migrationsReady = pendingMigrations.Length == 0 || app.Environment.IsDevelopment();
+        var ready = databaseAvailable && exportStorageAvailable && migrationsReady;
+        return Results.Json(
+            new
+            {
+                status = ready ? "ready" : "unavailable",
+                service = "STOKIO.Api",
+                database = new
+                {
+                    status = databaseAvailable ? "available" : "unavailable",
+                    latencyMs = Math.Round(databaseLatencyMs, 2)
+                },
+                migrations = new
+                {
+                    status = pendingMigrations.Length == 0 ? "up_to_date" : "pending",
+                    pendingCount = pendingMigrations.Length,
+                    appliedCount = appliedMigrations.Length,
+                    pending = pendingMigrations
+                },
+                dependencies = new
+                {
+                    exportStorage = exportStorageAvailable ? "available" : "unavailable"
+                }
+            },
+            statusCode: ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
     })
     .AllowAnonymous()
     .WithTags("Health");
@@ -192,6 +238,7 @@ app.MapReturnRequestEndpoints("/api/returns");
 app.MapReportEndpoints("/api/reports");
 app.MapExportEndpoints("/api/exports");
 app.MapDashboardEndpoints("/api/dashboard");
+app.MapObservabilityEndpoints("/api/observability");
 
 app.MapAuthEndpoints("/api/v1/auth");
 app.MapProductEndpoints("/api/v1/products");
@@ -209,6 +256,7 @@ app.MapReturnRequestEndpoints("/api/v1/returns");
 app.MapReportEndpoints("/api/v1/reports");
 app.MapExportEndpoints("/api/v1/exports");
 app.MapDashboardEndpoints("/api/v1/dashboard");
+app.MapObservabilityEndpoints("/api/v1/observability");
 
 await app.RunAsync();
 

@@ -1363,6 +1363,23 @@ tbody tr:last-child td {
   border-color: #ffd9a3;
 }
 
+.muted-block {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--muted-text);
+  text-overflow: ellipsis;
+}
+
+.json-snippet {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  color: #34445f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .timeline-list {
   display: grid;
   gap: 10px;

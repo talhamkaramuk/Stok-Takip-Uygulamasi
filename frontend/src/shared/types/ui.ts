@@ -14,6 +14,7 @@ export type TabKey =
   | "stock"
   | "count"
   | "users"
+  | "audit"
   | "profile"
   | "reports";
 

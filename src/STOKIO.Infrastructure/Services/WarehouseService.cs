@@ -15,7 +15,8 @@ public sealed class WarehouseService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter,
     IdempotencyService? idempotencyService = null,
-    DbTransactionRunner? transactionRunner = null) : IWarehouseService
+    DbTransactionRunner? transactionRunner = null,
+    IMetricsRecorder? metricsRecorder = null) : IWarehouseService
 {
     public async Task<PagedResult<WarehouseDto>> ListAsync(string? search, bool? isActive, int? page, int? pageSize, CancellationToken cancellationToken)
     {
@@ -293,6 +294,9 @@ public sealed class WarehouseService(
             {
                 await dbContext.SaveChangesAsync(ct);
             }
+
+            metricsRecorder?.RecordStockMovement(outMovement.Type, outMovement.Quantity, product.CurrentStock <= product.CriticalStockLevel);
+            metricsRecorder?.RecordStockMovement(inMovement.Type, inMovement.Quantity, product.CurrentStock <= product.CriticalStockLevel);
 
             return dto;
         }, cancellationToken);

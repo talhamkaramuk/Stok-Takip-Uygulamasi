@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.RateLimiting;
 using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
+using STOKIO.Application.Common;
 using STOKIO.Application.Dtos.Auth;
 
 namespace STOKIO.Api.Endpoints;
@@ -36,6 +37,7 @@ public static class AuthEndpoints
             IValidator<LoginRequest> validator,
             AuthRateLimiter authRateLimiter,
             HttpContext httpContext,
+            IMetricsRecorder metricsRecorder,
             IAuthService authService,
             CancellationToken cancellationToken) =>
         {
@@ -47,14 +49,25 @@ public static class AuthEndpoints
 
             if (!await authRateLimiter.TryAcquireLoginAsync(httpContext, request, cancellationToken))
             {
+                metricsRecorder.RecordLogin(succeeded: false);
                 return Results.Problem(
                     type: "https://stokio.local/problems/auth_rate_limited",
                     title: "auth_rate_limited",
-                    detail: "Too many login attempts. Please try again later.",
+                    detail: "Çok fazla giriş denemesi yapıldı. Lütfen daha sonra tekrar deneyin.",
                     statusCode: StatusCodes.Status429TooManyRequests);
             }
 
-            return Results.Ok(await authService.LoginAsync(request, cancellationToken));
+            try
+            {
+                var response = await authService.LoginAsync(request, cancellationToken);
+                metricsRecorder.RecordLogin(succeeded: true);
+                return Results.Ok(response);
+            }
+            catch (AppProblemException exception) when (exception.StatusCode == StatusCodes.Status401Unauthorized)
+            {
+                metricsRecorder.RecordLogin(succeeded: false);
+                throw;
+            }
         })
         .AllowAnonymous()
         .RequireRateLimiting(RateLimitPolicyNames.AuthLoginIp);

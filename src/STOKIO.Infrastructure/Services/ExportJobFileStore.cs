@@ -31,6 +31,14 @@ public sealed class ExportJobFileStore(IConfiguration configuration)
         return await File.ReadAllBytesAsync(path, cancellationToken);
     }
 
+    public async Task CheckWritableAsync(CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(_rootPath);
+        var probePath = Path.Combine(_rootPath, $".health-{Guid.CreateVersion7():N}.tmp");
+        await File.WriteAllTextAsync(probePath, "ok", cancellationToken);
+        File.Delete(probePath);
+    }
+
     private string ResolvePath(string storageKey)
     {
         var normalizedKey = storageKey

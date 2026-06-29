@@ -95,7 +95,8 @@ public sealed class PurchaseRequestService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter,
     IdempotencyService? idempotencyService = null,
-    DbTransactionRunner? transactionRunner = null) : IPurchaseRequestService
+    DbTransactionRunner? transactionRunner = null,
+    IMetricsRecorder? metricsRecorder = null) : IPurchaseRequestService
 {
     public async Task<PagedResult<PurchaseRequestDto>> ListAsync(string? search, PurchaseRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
@@ -218,6 +219,7 @@ public sealed class PurchaseRequestService(
             var warehouseStocks = await OperationStock.PrepareStocksForWriteAsync(stockLedger, receivedItems, purchaseRequest.WarehouseId, ct);
 
             purchaseRequest.ApprovedAt ??= clock.UtcNow;
+            var stockMetricEvents = new List<(StockMovementType Type, int Quantity, bool IsCritical)>();
             foreach (var item in receivedItems)
             {
                 OperationStock.ApplyPrepared(
@@ -229,6 +231,7 @@ public sealed class PurchaseRequestService(
                     StockMovementType.In,
                     item.Quantity,
                     $"Purchase request received: {purchaseRequest.RequestNumber}");
+                stockMetricEvents.Add((StockMovementType.In, item.Quantity, item.Product.CurrentStock <= item.Product.CriticalStockLevel));
             }
 
             foreach (var line in receivedLines)
@@ -250,6 +253,11 @@ public sealed class PurchaseRequestService(
             if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(PurchaseRequest), purchaseRequest.Id.ToString(), dto, ct))
             {
                 await dbContext.SaveChangesAsync(ct);
+            }
+
+            foreach (var metricEvent in stockMetricEvents)
+            {
+                metricsRecorder?.RecordStockMovement(metricEvent.Type, metricEvent.Quantity, metricEvent.IsCritical);
             }
 
             return dto;
@@ -289,7 +297,8 @@ public sealed class ShipmentService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter,
     IdempotencyService? idempotencyService = null,
-    DbTransactionRunner? transactionRunner = null) : IShipmentService
+    DbTransactionRunner? transactionRunner = null,
+    IMetricsRecorder? metricsRecorder = null) : IShipmentService
 {
     public async Task<PagedResult<ShipmentDto>> ListAsync(string? search, ShipmentStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
@@ -375,6 +384,7 @@ public sealed class ShipmentService(
                 ShippedAt = clock.UtcNow
             };
 
+            var stockMetricEvents = new List<(StockMovementType Type, int Quantity, bool IsCritical)>();
             foreach (var item in items)
             {
                 OperationStock.ApplyPrepared(
@@ -386,6 +396,7 @@ public sealed class ShipmentService(
                     StockMovementType.Out,
                     item.Quantity,
                     $"Shipment created: {shipment.ShipmentNumber}");
+                stockMetricEvents.Add((StockMovementType.Out, item.Quantity, item.Product.CurrentStock <= item.Product.CriticalStockLevel));
 
                 shipment.Items.Add(new ShipmentItem
                 {
@@ -408,6 +419,11 @@ public sealed class ShipmentService(
             if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(Shipment), shipment.Id.ToString(), dto, ct))
             {
                 await dbContext.SaveChangesAsync(ct);
+            }
+
+            foreach (var metricEvent in stockMetricEvents)
+            {
+                metricsRecorder?.RecordStockMovement(metricEvent.Type, metricEvent.Quantity, metricEvent.IsCritical);
             }
 
             return dto;
@@ -446,7 +462,8 @@ public sealed class ReturnRequestService(
     WarehouseStockLedger stockLedger,
     AuditWriter auditWriter,
     IdempotencyService? idempotencyService = null,
-    DbTransactionRunner? transactionRunner = null) : IReturnRequestService
+    DbTransactionRunner? transactionRunner = null,
+    IMetricsRecorder? metricsRecorder = null) : IReturnRequestService
 {
     public async Task<PagedResult<ReturnRequestDto>> ListAsync(string? search, ReturnRequestStatus? status, int? page, int? pageSize, CancellationToken cancellationToken)
     {
@@ -531,6 +548,7 @@ public sealed class ReturnRequestService(
                 ReceivedAt = clock.UtcNow
             };
 
+            var stockMetricEvents = new List<(StockMovementType Type, int Quantity, bool IsCritical)>();
             foreach (var item in items)
             {
                 OperationStock.ApplyPrepared(
@@ -542,6 +560,7 @@ public sealed class ReturnRequestService(
                     StockMovementType.In,
                     item.Quantity,
                     $"Return received: {returnRequest.ReturnNumber}");
+                stockMetricEvents.Add((StockMovementType.In, item.Quantity, item.Product.CurrentStock <= item.Product.CriticalStockLevel));
 
                 returnRequest.Items.Add(new ReturnRequestItem
                 {
@@ -562,6 +581,11 @@ public sealed class ReturnRequestService(
             if (await Idempotency.CompleteAsync(operationName, requestFingerprint, nameof(ReturnRequest), returnRequest.Id.ToString(), dto, ct))
             {
                 await dbContext.SaveChangesAsync(ct);
+            }
+
+            foreach (var metricEvent in stockMetricEvents)
+            {
+                metricsRecorder?.RecordStockMovement(metricEvent.Type, metricEvent.Quantity, metricEvent.IsCritical);
             }
 
             return dto;

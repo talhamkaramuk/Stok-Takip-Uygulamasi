@@ -1,5 +1,6 @@
 import type {
   AuthResponse,
+  AuditLog,
   Category,
   CountDifference,
   CriticalStock,
@@ -10,6 +11,7 @@ import type {
   InventoryCount,
   InventoryCountItem,
   ManagedUser,
+  MetricsSnapshot,
   PagedResult,
   Product,
   PurchaseRequest,
@@ -60,6 +62,13 @@ type StockMovementListQuery = PageQuery & {
   productId?: string | null;
   warehouseId?: string | null;
   type?: StockMovementType | null;
+  from?: string | null;
+  to?: string | null;
+};
+type AuditLogListQuery = PageQuery & {
+  search?: string;
+  action?: string | null;
+  entityName?: string | null;
   from?: string | null;
   to?: string | null;
 };
@@ -154,6 +163,11 @@ export function createApiClient(token: string | null) {
       request<AuthResponse>(`${API_PREFIX}/auth/login`, { method: "POST", body: JSON.stringify(body) }),
 
     getDashboardSummary: () => request<DashboardSummary>(`${API_PREFIX}/dashboard/summary`),
+
+    listAuditLogs: (params: AuditLogListQuery = {}) =>
+      request<PagedResult<AuditLog>>(`${API_PREFIX}/observability/audit-logs${toQueryString(params)}`),
+
+    getMetrics: () => request<MetricsSnapshot>(`${API_PREFIX}/observability/metrics`),
 
     listProducts: (params: ProductListQuery = {}) =>
       request<PagedResult<Product>>(`${API_PREFIX}/products${toQueryString(params)}`),

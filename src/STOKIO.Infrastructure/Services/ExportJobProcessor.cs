@@ -14,6 +14,7 @@ public sealed class ExportJobProcessor(
     IExportService exportService,
     ExportJobFileStore fileStore,
     IClock clock,
+    IMetricsRecorder metricsRecorder,
     ILogger<ExportJobProcessor> logger) : IExportJobProcessor
 {
     public async Task<IReadOnlyList<Guid>> RecoverPendingAsync(CancellationToken cancellationToken)
@@ -56,6 +57,7 @@ public sealed class ExportJobProcessor(
         job.ErrorMessage = null;
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
             var file = await CreateFileAsync(job, cancellationToken);
@@ -67,6 +69,7 @@ public sealed class ExportJobProcessor(
             job.Status = ExportJobStatus.Ready;
             job.CompletedAt = clock.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
+            metricsRecorder.RecordExport(job.Type, succeeded: true, System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -81,6 +84,7 @@ public sealed class ExportJobProcessor(
             job.ErrorMessage = "Dışa aktarma dosyası oluşturulamadı.";
             job.CompletedAt = clock.UtcNow;
             await dbContext.SaveChangesAsync(CancellationToken.None);
+            metricsRecorder.RecordExport(job.Type, succeeded: false, System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
         }
     }
 

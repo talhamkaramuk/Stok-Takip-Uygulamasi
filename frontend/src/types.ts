@@ -22,6 +22,35 @@ export type ExportJob = {
   errorMessage: string | null;
 };
 
+export type AuditLog = {
+  id: string;
+  userId: string | null;
+  action: string;
+  entityName: string;
+  entityId: string;
+  oldValueJson: string | null;
+  newValueJson: string | null;
+  metadataJson: string | null;
+  createdAt: string;
+};
+
+export type MetricsSnapshot = {
+  requestCount: number;
+  clientErrorCount: number;
+  serverErrorCount: number;
+  averageLatencyMs: number;
+  loginSuccessCount: number;
+  loginFailureCount: number;
+  stockMovementCount: number;
+  criticalStockMovementCount: number;
+  exportSuccessCount: number;
+  exportFailureCount: number;
+  averageExportDurationMs: number;
+  databaseReadinessSuccessCount: number;
+  databaseReadinessFailureCount: number;
+  averageDatabaseReadinessMs: number;
+};
+
 export type DashboardSummary = {
   activeProductCount: number;
   productCount: number;
