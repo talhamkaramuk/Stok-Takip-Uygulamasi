@@ -114,7 +114,7 @@ export function AppShell({
         nextShippedOrders,
         nextActiveCount
       ] = await Promise.all([
-        api.getDashboardSummary(),
+        api.getDashboardSummary().catch(() => null),
         api.listProducts({ isActive: true }),
         api.listCriticalStock(),
         api.listCategories(),
@@ -126,7 +126,17 @@ export function AppShell({
         api.listOrders({ status: "Shipped" }),
         activeCount ? api.getCount(activeCount.id).catch(() => null) : Promise.resolve(null)
       ]);
-      setDashboardSummary(nextDashboardSummary);
+      setDashboardSummary(nextDashboardSummary ?? buildFallbackDashboardSummary({
+        products: nextProducts,
+        critical: nextCritical,
+        categories: nextCategories,
+        customers: nextCustomers,
+        suppliers: nextSuppliers,
+        warehouses: nextWarehouses,
+        pendingOrders: nextPendingOrders,
+        partiallyShippedOrders: nextPartiallyShippedOrders,
+        shippedOrders: nextShippedOrders
+      }));
       setProducts(nextProducts.items);
       setCritical(nextCritical);
       setCategories(nextCategories.items);
@@ -567,6 +577,121 @@ export function AppShell({
       </section>
     </main>
   );
+}
+
+function buildFallbackDashboardSummary({
+  products,
+  critical,
+  categories,
+  customers,
+  suppliers,
+  warehouses,
+  pendingOrders,
+  partiallyShippedOrders,
+  shippedOrders
+}: {
+  products: { items: Product[]; totalCount: number };
+  critical: CriticalStock[];
+  categories: { totalCount: number };
+  customers: { totalCount: number };
+  suppliers: { totalCount: number };
+  warehouses: { items: Warehouse[]; totalCount: number };
+  pendingOrders: { items: SalesOrder[]; totalCount: number };
+  partiallyShippedOrders: { items: SalesOrder[]; totalCount: number };
+  shippedOrders: { items: SalesOrder[]; totalCount: number };
+}): DashboardSummary {
+  const orderItems = [...pendingOrders.items, ...partiallyShippedOrders.items, ...shippedOrders.items];
+  const orderCount = pendingOrders.totalCount + partiallyShippedOrders.totalCount + shippedOrders.totalCount;
+  const totalStock = products.items.reduce((sum, product) => sum + product.currentStock, 0);
+  const activeWarehouseCount = warehouses.items.filter((warehouse) => warehouse.isActive).length || warehouses.totalCount;
+
+  return {
+    activeProductCount: products.totalCount,
+    productCount: products.totalCount,
+    totalStock,
+    criticalStockCount: critical.length,
+    categoryCount: categories.totalCount,
+    customerCount: customers.totalCount,
+    activeCustomerCount: customers.totalCount,
+    supplierCount: suppliers.totalCount,
+    activeSupplierCount: suppliers.totalCount,
+    warehouseCount: warehouses.totalCount,
+    activeWarehouseCount,
+    userCount: 0,
+    activeUserCount: 0,
+    stockMovementCount: 0,
+    stockInMovementCount: 0,
+    stockOutMovementCount: 0,
+    countCorrectionMovementCount: 0,
+    orderCount,
+    pendingOrderCount: pendingOrders.totalCount,
+    partiallyShippedOrderCount: partiallyShippedOrders.totalCount,
+    shippedOrderCount: shippedOrders.totalCount,
+    cancelledOrderCount: 0,
+    purchaseRequestCount: 0,
+    pendingPurchaseRequestCount: 0,
+    approvedPurchaseRequestCount: 0,
+    partiallyReceivedPurchaseRequestCount: 0,
+    receivedPurchaseRequestCount: 0,
+    shipmentCount: 0,
+    completedShipmentCount: 0,
+    cancelledShipmentCount: 0,
+    returnCount: 0,
+    receivedReturnCount: 0,
+    rejectedReturnCount: 0,
+    operationTrend: [],
+    stockFlow: [],
+    operationBars: [
+      { label: "Sipariş", value: orderCount, tone: "primary" },
+      { label: "Alım", value: 0, tone: "success" },
+      { label: "Sevkiyat", value: 0, tone: "info" },
+      { label: "İade", value: 0, tone: "warning" }
+    ],
+    pendingJobs: [
+      { label: "Bekleyen sipariş", value: pendingOrders.totalCount + partiallyShippedOrders.totalCount },
+      { label: "Kritik stok", value: critical.length }
+    ],
+    warehouseBars: warehouses.items
+      .map((warehouse) => ({ label: warehouse.name, value: warehouse.totalQuantity }))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 6),
+    topProducts: buildFallbackTopProducts(orderItems),
+    recentOperations: orderItems
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .slice(0, 8)
+      .map((order) => ({
+        id: order.id,
+        type: "Sipariş",
+        number: order.orderNumber,
+        party: order.customerName,
+        quantity: order.totalQuantity,
+        status: order.status,
+        date: order.createdAt
+      }))
+  };
+}
+
+function buildFallbackTopProducts(orders: SalesOrder[]) {
+  const totals = new Map<string, { productId: string; sku: string; productName: string; quantity: number }>();
+
+  for (const item of orders.flatMap((order) => order.items)) {
+    const existing = totals.get(item.productId);
+    if (existing) {
+      existing.quantity += item.quantity;
+      continue;
+    }
+
+    totals.set(item.productId, {
+      productId: item.productId,
+      sku: item.sku,
+      productName: item.productName,
+      quantity: item.quantity
+    });
+  }
+
+  return [...totals.values()]
+    .sort((left, right) => right.quantity - left.quantity)
+    .slice(0, 6);
 }
 
 function ProfileView({ user }: { user: AuthResponse["user"] }) {
