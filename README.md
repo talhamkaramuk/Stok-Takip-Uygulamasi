@@ -93,6 +93,40 @@ cd frontend
 npm run build
 ```
 
+Test katmanlari:
+
+- Unit/service tests: validator, pure domain rule, number generation, idempotency state ve servis davranislarini hizli InMemory kosuda dogrular. Varsayilan `dotnet test` bunlari calistirir.
+- Relational integration tests: PostgreSQL unique constraint, check constraint, tenant isolation, concurrency token ve atomic idempotency reservation davranislarini dogrular. Bu testler varsayilan olarak atlanir.
+- E2E smoke tests: calisan API uzerinden register/login, product create, stock in/out, count close, shipment, return ve export job akisini dener. Bu testler varsayilan olarak atlanir.
+
+PostgreSQL relational testleri calistirma:
+
+```powershell
+docker compose up -d postgres
+docker compose exec -T postgres psql -U stokio -d postgres -c "CREATE DATABASE stokio_test;"
+$env:STOKIO_TEST_POSTGRES_CONNECTION_STRING="Host=localhost;Port=5432;Database=stokio_test;Username=stokio;Password=stokio_dev_password"
+dotnet test --filter "Layer=RelationalIntegration"
+```
+
+Relational testler hedef database'i sifirlar. Guvenlik icin connection string icindeki database adinda `test` gecmesi zorunludur.
+
+Bilgisayarda baska bir PostgreSQL zaten `5432` portunu kullaniyorsa test portunu ayirin:
+
+```powershell
+$env:POSTGRES_PORT="55432"
+docker compose up -d --force-recreate postgres
+docker compose exec -T postgres psql -U stokio -d postgres -c "CREATE DATABASE stokio_test;"
+$env:STOKIO_TEST_POSTGRES_CONNECTION_STRING="Host=localhost;Port=55432;Database=stokio_test;Username=stokio;Password=stokio_dev_password"
+dotnet test --filter "Layer=RelationalIntegration"
+```
+
+Calisan API'ye karsi E2E smoke testi:
+
+```powershell
+$env:STOKIO_E2E_BASE_URL="http://localhost:8080"
+dotnet test --filter "Layer=E2ESmoke"
+```
+
 ## EF Core Migration
 
 Migration aracı repo içindeki local tool manifest ile sabitlenmiştir:

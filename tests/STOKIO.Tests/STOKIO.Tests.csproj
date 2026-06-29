@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\src\STOKIO.Application\STOKIO.Application.csproj" />
     <ProjectReference Include="..\..\src\STOKIO.Infrastructure\STOKIO.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
