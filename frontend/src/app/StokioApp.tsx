@@ -4,39 +4,66 @@ import type { Notice } from "../shared/types/ui";
 import type { AuthResponse } from "../types";
 import { AppShell } from "./AppShell";
 import { AuthScreen } from "./auth/AuthScreen";
-import { legacyTokenStorageKey, legacyUserStorageKey } from "./auth/session";
+import {
+  clearStoredAuth,
+  legacyTokenStorageKey,
+  legacyUserStorageKey,
+  readStoredAuth,
+  saveStoredAuth
+} from "./auth/session";
 
 export default function StokioApp() {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthResponse["user"] | null>(null);
+  const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth());
   const [notice, setNotice] = useState<Notice | null>(null);
-  const api = useMemo(() => createApiClient(token), [token]);
+  const api = useMemo(() => createApiClient(auth?.accessToken ?? null), [auth?.accessToken]);
 
   useEffect(() => {
     localStorage.removeItem(legacyTokenStorageKey);
     localStorage.removeItem(legacyUserStorageKey);
   }, []);
 
+  useEffect(() => {
+    if (!auth) {
+      return undefined;
+    }
+
+    const expiresInMs = Date.parse(auth.expiresAt) - Date.now();
+    if (!Number.isFinite(expiresInMs) || expiresInMs <= 0) {
+      clearStoredAuth();
+      setAuth(null);
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      clearStoredAuth();
+      setAuth(null);
+    }, Math.min(expiresInMs, 2_147_483_647));
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [auth]);
+
   function handleAuth(response: AuthResponse) {
     setNotice(null);
-    setToken(response.accessToken);
-    setUser(response.user);
+    saveStoredAuth(response);
+    setAuth(response);
   }
 
   function logout() {
     setNotice(null);
-    setToken(null);
-    setUser(null);
+    clearStoredAuth();
+    setAuth(null);
   }
 
-  if (!token || !user) {
+  if (!auth) {
     return <AuthScreen api={api} onAuth={handleAuth} notice={notice} setNotice={setNotice} />;
   }
 
   return (
     <AppShell
       api={api}
-      user={user}
+      user={auth.user}
       onLogout={logout}
       notice={notice}
       setNotice={setNotice}
