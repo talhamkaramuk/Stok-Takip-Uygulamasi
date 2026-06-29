@@ -37,7 +37,11 @@ public static class DependencyInjection
         services.AddScoped<IReturnRequestService, ReturnRequestService>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IExportService, ExportService>();
+        services.AddScoped<IExportJobService, ExportJobService>();
+        services.AddScoped<IExportJobProcessor, ExportJobProcessor>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddSingleton<IExportJobQueue, ExportJobQueue>();
+        services.AddSingleton<ExportJobFileStore>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

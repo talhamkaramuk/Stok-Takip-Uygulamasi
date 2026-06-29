@@ -4,6 +4,8 @@ import type {
   CountDifference,
   CriticalStock,
   DashboardSummary,
+  ExportJob,
+  ExportJobType,
   Customer,
   InventoryCount,
   InventoryCountItem,
@@ -101,28 +103,42 @@ export function createApiClient(token: string | null) {
     return (await response.json()) as T;
   }
 
+  async function downloadFile(path: string, fileName: string) {
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+    if (!response.ok) {
+      throw new Error(await readError(response));
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return {
-    downloadExport: async (path: string, fileName: string) => {
-      const headers = new Headers();
-      if (token) {
-        headers.set("Authorization", `Bearer ${token}`);
-      }
+    downloadExport: (path: string, fileName: string) => downloadFile(`${API_PREFIX}${path}`, fileName),
 
-      const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, { headers });
-      if (!response.ok) {
-        throw new Error(await readError(response));
-      }
+    createExportJob: (body: {
+      type: ExportJobType;
+      countId?: string | null;
+      from?: string | null;
+      to?: string | null;
+    }) => request<ExportJob>(`${API_PREFIX}/exports/jobs`, { method: "POST", body: JSON.stringify(body) }),
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = fileName;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    },
+    getExportJob: (jobId: string) => request<ExportJob>(`${API_PREFIX}/exports/jobs/${jobId}`),
+
+    downloadExportJob: (jobId: string, fileName: string) =>
+      downloadFile(`${API_PREFIX}/exports/jobs/${jobId}/download`, fileName),
 
     registerTenant: (body: {
       businessName: string;

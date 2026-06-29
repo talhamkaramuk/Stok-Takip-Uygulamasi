@@ -3,6 +3,7 @@ import {
   BarChart3,
   Download,
   FileSpreadsheet,
+  Loader2,
   ShieldCheck
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -14,10 +15,15 @@ import { useServerPage } from "../../shared/pagination/useServerPage";
 import type { Notice } from "../../shared/types/ui";
 import type {
   CriticalStock,
+  ExportJob,
+  ExportJobType,
   InventoryCount,
   StockConsistency,
   StockMovement
 } from "../../types";
+
+const EXPORT_POLL_DELAY_MS = 800;
+const EXPORT_MAX_POLLS = 30;
 
 export function ReportsView({
   api,
@@ -31,6 +37,7 @@ export function ReportsView({
   setNotice: (notice: Notice | null) => void;
 }) {
   const [consistency, setConsistency] = useState<StockConsistency[]>([]);
+  const [exportingType, setExportingType] = useState<ExportJobType | null>(null);
   const movementPage = useServerPage<StockMovement, Record<string, never>>({
     filters: {},
     load: api.listStockMovements,
@@ -57,13 +64,39 @@ export function ReportsView({
     };
   }, [api, setNotice]);
 
-  async function exportFile(path: string, fileName: string) {
+  async function requestExport(type: ExportJobType, countId?: string | null) {
     try {
-      await api.downloadExport(path, fileName);
+      setExportingType(type);
+      const job = await api.createExportJob({ type, countId });
+      const readyJob = await waitForExportJob(job);
+      await api.downloadExportJob(readyJob.id, readyJob.fileName);
+      setNotice({ type: "success", message: "Dışa aktarma dosyası hazırlandı." });
     } catch (error) {
       setNotice({ type: "error", message: getErrorMessage(error) });
+    } finally {
+      setExportingType(null);
     }
   }
+
+  async function waitForExportJob(initialJob: ExportJob) {
+    let job = initialJob;
+    for (let attempt = 0; attempt < EXPORT_MAX_POLLS; attempt++) {
+      if (job.status === "Ready") {
+        return job;
+      }
+
+      if (job.status === "Failed") {
+        throw new Error(job.errorMessage ?? "Dışa aktarma işlemi başarısız oldu.");
+      }
+
+      await sleep(EXPORT_POLL_DELAY_MS);
+      job = await api.getExportJob(job.id);
+    }
+
+    throw new Error("Dışa aktarma işlemi beklenenden uzun sürdü. Biraz sonra tekrar deneyin.");
+  }
+
+  const exportDisabled = exportingType !== null;
 
   return (
     <div className="content-grid">
@@ -75,25 +108,25 @@ export function ReportsView({
           </span>
         </div>
         <div className="export-grid">
-          <button className="ghost-action" type="button" onClick={() => void exportFile("/exports/current-stock.xlsx", "stokio-current-stock.xlsx")}>
-            <Download size={17} />
+          <button className="ghost-action" type="button" disabled={exportDisabled} onClick={() => void requestExport("CurrentStock")}>
+            {exportingType === "CurrentStock" ? <Loader2 className="spin" size={17} /> : <Download size={17} />}
             Güncel stok
           </button>
-          <button className="ghost-action" type="button" onClick={() => void exportFile("/exports/critical-stock.xlsx", "stokio-critical-stock.xlsx")}>
-            <Download size={17} />
+          <button className="ghost-action" type="button" disabled={exportDisabled} onClick={() => void requestExport("CriticalStock")}>
+            {exportingType === "CriticalStock" ? <Loader2 className="spin" size={17} /> : <Download size={17} />}
             Kritik stok
           </button>
-          <button className="ghost-action" type="button" onClick={() => void exportFile("/exports/movements.xlsx", "stokio-stock-movements.xlsx")}>
-            <Download size={17} />
+          <button className="ghost-action" type="button" disabled={exportDisabled} onClick={() => void requestExport("StockMovements")}>
+            {exportingType === "StockMovements" ? <Loader2 className="spin" size={17} /> : <Download size={17} />}
             Hareketler
           </button>
           <button
             className="ghost-action"
             type="button"
-            disabled={!activeCount}
-            onClick={() => activeCount && void exportFile(`/exports/count-differences/${activeCount.id}.xlsx`, "stokio-count-differences.xlsx")}
+            disabled={!activeCount || exportDisabled}
+            onClick={() => activeCount && void requestExport("CountDifferences", activeCount.id)}
           >
-            <Download size={17} />
+            {exportingType === "CountDifferences" ? <Loader2 className="spin" size={17} /> : <Download size={17} />}
             Sayım farkı
           </button>
         </div>
@@ -200,4 +233,8 @@ export function ReportsView({
       </section>
     </div>
   );
+}
+
+function sleep(durationMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, durationMs));
 }

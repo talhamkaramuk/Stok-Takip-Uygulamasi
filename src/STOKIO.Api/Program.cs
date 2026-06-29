@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using STOKIO.Api.Configuration;
 using STOKIO.Api.Endpoints;
+using STOKIO.Api.HostedServices;
 using STOKIO.Api.Middleware;
 using STOKIO.Api.Security;
 using STOKIO.Application.Abstractions;
@@ -39,6 +40,7 @@ builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IIdempotencyKeyAccessor, HttpIdempotencyKeyAccessor>();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddHostedService<ExportJobWorker>();
 
 var jwtOptions = JwtOptions.FromConfiguration(builder.Configuration);
 var databaseStartupOptions = DatabaseStartupOptions.FromConfiguration(builder.Configuration);
@@ -290,6 +292,35 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         ALTER TABLE "IdempotencyRecords" ALTER COLUMN "CompletedAt" DROP NOT NULL;
         ALTER TABLE "IdempotencyRecords" ADD COLUMN IF NOT EXISTS "ExpiresAt" timestamp with time zone NOT NULL DEFAULT (now() + interval '24 hours');
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_IdempotencyRecords_TenantId_OperationName_Key" ON "IdempotencyRecords" ("TenantId", "OperationName", "Key");
+
+        CREATE TABLE IF NOT EXISTS "ExportJobs" (
+            "Id" uuid NOT NULL,
+            "CreatedAt" timestamp with time zone NOT NULL,
+            "UpdatedAt" timestamp with time zone NULL,
+            "TenantId" uuid NOT NULL,
+            "RequestedByUserId" uuid NULL,
+            "Type" character varying(40) NOT NULL,
+            "Status" character varying(32) NOT NULL DEFAULT 'Queued',
+            "CountId" uuid NULL,
+            "From" timestamp with time zone NULL,
+            "To" timestamp with time zone NULL,
+            "FileName" character varying(180) NOT NULL,
+            "ContentType" character varying(120) NOT NULL,
+            "StorageKey" character varying(300) NULL,
+            "ErrorMessage" character varying(500) NULL,
+            "CompletedAt" timestamp with time zone NULL,
+            "ExpiresAt" timestamp with time zone NOT NULL,
+            CONSTRAINT "PK_ExportJobs" PRIMARY KEY ("Id"),
+            CONSTRAINT "FK_ExportJobs_Tenants_TenantId" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("Id") ON DELETE RESTRICT,
+            CONSTRAINT "FK_ExportJobs_ApplicationUsers_RequestedByUserId" FOREIGN KEY ("RequestedByUserId") REFERENCES "ApplicationUsers" ("Id") ON DELETE SET NULL,
+            CONSTRAINT "FK_ExportJobs_InventoryCounts_CountId" FOREIGN KEY ("CountId") REFERENCES "InventoryCounts" ("Id") ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_CountId" ON "ExportJobs" ("CountId");
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_ExpiresAt" ON "ExportJobs" ("ExpiresAt");
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_RequestedByUserId" ON "ExportJobs" ("RequestedByUserId");
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_TenantId_CreatedAt" ON "ExportJobs" ("TenantId", "CreatedAt");
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_TenantId_Status" ON "ExportJobs" ("TenantId", "Status");
 
         CREATE TABLE IF NOT EXISTS "Customers" (
             "Id" uuid NOT NULL,

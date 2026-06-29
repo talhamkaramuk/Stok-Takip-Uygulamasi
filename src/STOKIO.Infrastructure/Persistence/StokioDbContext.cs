@@ -33,6 +33,7 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
     public DbSet<ReturnRequestItem> ReturnRequestItems => Set<ReturnRequestItem>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<ExportJob> ExportJobs => Set<ExportJob>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -344,6 +345,23 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
             entity.Property(x => x.ResourceId).HasMaxLength(80).IsRequired();
             entity.Property(x => x.ResponseSnapshotJson).HasColumnType("jsonb");
             entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ExportJob>(entity =>
+        {
+            entity.HasQueryFilter(x => x.TenantId == TenantFilterId);
+            entity.HasIndex(x => new { x.TenantId, x.Status });
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            entity.Property(x => x.FileName).HasMaxLength(180).IsRequired();
+            entity.Property(x => x.ContentType).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.StorageKey).HasMaxLength(300);
+            entity.Property(x => x.ErrorMessage).HasMaxLength(500);
+            entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Count).WithMany().HasForeignKey(x => x.CountId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 

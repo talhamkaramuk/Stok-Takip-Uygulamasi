@@ -8,6 +8,20 @@ export type PagedResult<T> = {
   totalPages: number;
 };
 
+export type ExportJobType = "CurrentStock" | "CriticalStock" | "StockMovements" | "CountDifferences";
+export type ExportJobStatus = "Queued" | "Processing" | "Ready" | "Failed";
+
+export type ExportJob = {
+  id: string;
+  type: ExportJobType;
+  status: ExportJobStatus;
+  fileName: string;
+  createdAt: string;
+  completedAt: string | null;
+  expiresAt: string;
+  errorMessage: string | null;
+};
+
 export type DashboardSummary = {
   activeProductCount: number;
   productCount: number;
