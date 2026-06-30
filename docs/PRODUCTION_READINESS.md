@@ -120,6 +120,10 @@ Mevcut durum:
 
 - `/health` liveness endpoint'i vardır.
 - `/health/ready` veritabanı bağlantısını kontrol eden readiness endpoint'i olarak eklenmiştir.
+- `IMetricsRecorder` production ortamında process içi sayaç tutmaz; `STOKIO.Api` OpenTelemetry meter'i üzerinden OTLP exporter'a yazar.
+- Uygulama request count/latency, 4xx/5xx count, login success/failure, stock movement count, export success/failure ve DB readiness latency sinyallerini dış collector'a aktarır.
+- Production ortamında `Observability:Metrics:OtlpEndpoint` veya `OTEL_EXPORTER_OTLP_ENDPOINT` zorunludur; eksikse uygulama fail-fast başlar.
+- `/api/v1/observability/metrics` JSON snapshot endpoint'i debug/development amaçlıdır ve sadece `Observability:Metrics:EnableDebugSnapshotEndpoint=true` iken map edilir.
 
 ## P4 - Test ve Release Kalitesi
 
@@ -194,4 +198,6 @@ Jwt:SigningKey=external secret
 ConnectionStrings:DefaultConnection=external secret
 Structured logging=enabled
 Health endpoints=enabled
+Observability:Metrics:OtlpEndpoint=configured collector URI
+Observability:Metrics:EnableDebugSnapshotEndpoint=false
 ```

@@ -17,7 +17,8 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: true,
                 ApplyDevelopmentSchemaPatches: true,
-                SeedDevelopmentData: true)));
+                SeedDevelopmentData: true),
+            CreateObservabilityMetricsOptions(hasExternalExporter: false)));
 
         Assert.Null(exception);
     }
@@ -32,7 +33,8 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: true,
                 ApplyDevelopmentSchemaPatches: false,
-                SeedDevelopmentData: false)));
+                SeedDevelopmentData: false),
+            CreateObservabilityMetricsOptions()));
 
         Assert.Contains("Database:EnsureCreated", exception.Message, StringComparison.Ordinal);
     }
@@ -47,7 +49,8 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: false,
                 ApplyDevelopmentSchemaPatches: true,
-                SeedDevelopmentData: false)));
+                SeedDevelopmentData: false),
+            CreateObservabilityMetricsOptions()));
 
         Assert.Contains("Database:ApplyDevelopmentSchemaPatches", exception.Message, StringComparison.Ordinal);
     }
@@ -62,7 +65,8 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: false,
                 ApplyDevelopmentSchemaPatches: false,
-                SeedDevelopmentData: true)));
+                SeedDevelopmentData: true),
+            CreateObservabilityMetricsOptions()));
 
         Assert.Contains("Database:SeedDevelopmentData", exception.Message, StringComparison.Ordinal);
     }
@@ -84,7 +88,8 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: false,
                 ApplyDevelopmentSchemaPatches: false,
-                SeedDevelopmentData: false)));
+                SeedDevelopmentData: false),
+            CreateObservabilityMetricsOptions()));
 
         Assert.Contains("Cors:AllowedOrigins", exception.Message, StringComparison.Ordinal);
     }
@@ -99,9 +104,26 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: false,
                 ApplyDevelopmentSchemaPatches: false,
-                SeedDevelopmentData: false)));
+                SeedDevelopmentData: false),
+            CreateObservabilityMetricsOptions()));
 
         Assert.Contains("Jwt:SigningKey", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingMetricsExporterOutsideDevelopment()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => StartupSafety.Validate(
+            new TestHostEnvironment(Environments.Production),
+            CreateJwtOptions(),
+            ["https://app.stokio.local"],
+            new DatabaseStartupOptions(
+                EnsureCreated: false,
+                ApplyDevelopmentSchemaPatches: false,
+                SeedDevelopmentData: false),
+            CreateObservabilityMetricsOptions(hasExternalExporter: false)));
+
+        Assert.Contains("Observability:Metrics:OtlpEndpoint", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -114,7 +136,8 @@ public sealed class StartupSafetyTests
             new DatabaseStartupOptions(
                 EnsureCreated: false,
                 ApplyDevelopmentSchemaPatches: false,
-                SeedDevelopmentData: false)));
+                SeedDevelopmentData: false),
+            CreateObservabilityMetricsOptions()));
 
         Assert.Null(exception);
     }
@@ -129,6 +152,13 @@ public sealed class StartupSafetyTests
             SigningKey = signingKey,
             AccessTokenMinutes = 15
         };
+    }
+
+    private static ObservabilityMetricsOptions CreateObservabilityMetricsOptions(bool hasExternalExporter = true)
+    {
+        return new ObservabilityMetricsOptions(
+            EnableDebugSnapshotEndpoint: false,
+            OtlpEndpoint: hasExternalExporter ? new Uri("http://otel-collector:4317") : null);
     }
 
     private sealed class TestHostEnvironment(string environmentName) : IHostEnvironment
