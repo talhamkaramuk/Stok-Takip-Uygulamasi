@@ -1,11 +1,16 @@
 using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using STOKIO.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace STOKIO.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(StokioDbContext))]
+    [Migration("20260630153000_AddExportJobDistributedLocks")]
     public partial class AddExportJobDistributedLocks : Migration
     {
         /// <inheritdoc />
