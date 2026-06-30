@@ -10,7 +10,8 @@ public static class StartupSafety
         IHostEnvironment environment,
         JwtOptions jwtOptions,
         IReadOnlyCollection<string> allowedOrigins,
-        DatabaseStartupOptions databaseOptions)
+        DatabaseStartupOptions databaseOptions,
+        ObservabilityMetricsOptions observabilityMetricsOptions)
     {
         if (environment.IsDevelopment())
         {
@@ -45,6 +46,12 @@ public static class StartupSafety
         if (IsDevelopmentJwtSigningKey(jwtOptions.SigningKey))
         {
             throw new InvalidOperationException("Jwt:SigningKey must be supplied by a production secret source outside Development.");
+        }
+
+        if (!observabilityMetricsOptions.HasExternalExporter)
+        {
+            throw new InvalidOperationException(
+                "Observability:Metrics:OtlpEndpoint or OTEL_EXPORTER_OTLP_ENDPOINT must be configured outside Development.");
         }
     }
 

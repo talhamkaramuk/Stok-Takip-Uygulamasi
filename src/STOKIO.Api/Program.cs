@@ -4,6 +4,8 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using Serilog;
 using STOKIO.Api.Configuration;
 using STOKIO.Api.Endpoints;
@@ -46,12 +48,12 @@ builder.Services.AddScoped<ICorrelationContext, CorrelationContext>();
 builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IIdempotencyKeyAccessor, HttpIdempotencyKeyAccessor>();
-builder.Services.AddSingleton<IMetricsRecorder, InMemoryMetricsRecorder>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<ExportJobWorker>();
 
 var jwtOptions = JwtOptions.FromConfiguration(builder.Configuration);
 var databaseStartupOptions = DatabaseStartupOptions.FromConfiguration(builder.Configuration);
+var observabilityMetricsOptions = ObservabilityMetricsOptions.FromConfiguration(builder.Configuration, builder.Environment);
 
 if (Encoding.UTF8.GetByteCount(jwtOptions.SigningKey) < 32)
 {
@@ -96,7 +98,38 @@ if (allowedOrigins.Length == 0 && builder.Environment.IsDevelopment())
     allowedOrigins = ["http://localhost:5173"];
 }
 
-StartupSafety.Validate(builder.Environment, jwtOptions, allowedOrigins, databaseStartupOptions);
+StartupSafety.Validate(builder.Environment, jwtOptions, allowedOrigins, databaseStartupOptions, observabilityMetricsOptions);
+
+builder.Services.AddSingleton(observabilityMetricsOptions);
+builder.Services.AddSingleton<OpenTelemetryMetricsRecorder>();
+if (observabilityMetricsOptions.EnableDebugSnapshotEndpoint)
+{
+    builder.Services.AddSingleton<InMemoryMetricsRecorder>();
+    builder.Services.AddSingleton<IMetricsRecorder, CompositeMetricsRecorder>();
+}
+else
+{
+    builder.Services.AddSingleton<IMetricsRecorder>(serviceProvider =>
+        serviceProvider.GetRequiredService<OpenTelemetryMetricsRecorder>());
+}
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(
+        serviceName: OpenTelemetryMetricsRecorder.MeterName,
+        serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString()))
+    .WithMetrics(metrics =>
+    {
+        metrics.AddMeter(OpenTelemetryMetricsRecorder.MeterName);
+
+        if (observabilityMetricsOptions.OtlpEndpoint is not null)
+        {
+            metrics.AddOtlpExporter(options =>
+            {
+                options.Endpoint = observabilityMetricsOptions.OtlpEndpoint;
+            });
+        }
+    });
 
 builder.Services.AddCors(options =>
 {
@@ -252,7 +285,7 @@ app.MapReturnRequestEndpoints("/api/returns");
 app.MapReportEndpoints("/api/reports");
 app.MapExportEndpoints("/api/exports");
 app.MapDashboardEndpoints("/api/dashboard");
-app.MapObservabilityEndpoints("/api/observability");
+app.MapObservabilityEndpoints("/api/observability", observabilityMetricsOptions.EnableDebugSnapshotEndpoint);
 
 app.MapAuthEndpoints("/api/v1/auth");
 app.MapProductEndpoints("/api/v1/products");
@@ -270,7 +303,7 @@ app.MapReturnRequestEndpoints("/api/v1/returns");
 app.MapReportEndpoints("/api/v1/reports");
 app.MapExportEndpoints("/api/v1/exports");
 app.MapDashboardEndpoints("/api/v1/dashboard");
-app.MapObservabilityEndpoints("/api/v1/observability");
+app.MapObservabilityEndpoints("/api/v1/observability", observabilityMetricsOptions.EnableDebugSnapshotEndpoint);
 
 await app.RunAsync();
 return 0;

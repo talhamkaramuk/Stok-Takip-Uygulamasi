@@ -39,6 +39,8 @@ services:
       Exports__RetryBackoffMaxSeconds: ${STOKIO_EXPORT_RETRY_BACKOFF_MAX_SECONDS:-900}
       Exports__CleanupIntervalMinutes: ${STOKIO_EXPORT_CLEANUP_INTERVAL_MINUTES:-30}
       Exports__CompletedRetentionDays: ${STOKIO_EXPORT_COMPLETED_RETENTION_DAYS:-7}
+      Observability__Metrics__EnableDebugSnapshotEndpoint: ${STOKIO_ENABLE_DEBUG_METRICS:-true}
+      Observability__Metrics__OtlpEndpoint: ${STOKIO_OTLP_ENDPOINT:-}
     ports:
       - "8080:8080"
     read_only: true

@@ -6,7 +6,10 @@ namespace STOKIO.Api.Endpoints;
 
 public static class ObservabilityEndpoints
 {
-    public static IEndpointRouteBuilder MapObservabilityEndpoints(this IEndpointRouteBuilder app, string basePath)
+    public static IEndpointRouteBuilder MapObservabilityEndpoints(
+        this IEndpointRouteBuilder app,
+        string basePath,
+        bool enableMetricsSnapshotEndpoint)
     {
         var group = app.MapGroup(basePath)
             .RequireAuthorization("TenantOwners")
@@ -27,10 +30,13 @@ public static class ObservabilityEndpoints
             return Results.Ok(await auditLogService.ListAsync(search, action, entityName, from, to, page, pageSize, cancellationToken));
         });
 
-        group.MapGet("/metrics", (IMetricsRecorder metricsRecorder) =>
+        if (enableMetricsSnapshotEndpoint)
         {
-            return Results.Ok(metricsRecorder.Snapshot());
-        });
+            group.MapGet("/metrics", (IMetricsRecorder metricsRecorder) =>
+            {
+                return Results.Ok(metricsRecorder.Snapshot());
+            });
+        }
 
         return app;
     }
