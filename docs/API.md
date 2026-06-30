@@ -15,6 +15,12 @@ Kimlik gerektiren çağrılarda header:
 Authorization: Bearer <access_token>
 ```
 
+Access token response body içinde döner ve kısa ömürlüdür. Browser istemcisi access token'ı kalıcı storage alanına yazmamalıdır. API login/register sonrası `stokio.refresh` adlı HttpOnly refresh cookie set eder. Refresh ve logout çağrıları cookie gönderimi için credentials ve CSRF guard için aşağıdaki header'ı gerektirir:
+
+```http
+X-STOKIO-Refresh: 1
+```
+
 Kritik stok yazma işlemlerinde istemci tekrar deneme yapacaksa idempotency header'ı gönderilmelidir:
 
 ```http
@@ -70,6 +76,31 @@ API rate limitleri endpoint türüne göre ayrılmıştır:
   "password": "StrongPass123"
 }
 ```
+
+Başarılı register/login response'u:
+
+```json
+{
+  "accessToken": "<jwt>",
+  "expiresAt": "2026-06-30T12:15:00+00:00",
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "tenantId": "00000000-0000-0000-0000-000000000000",
+    "tenantSlug": "stokio-demo",
+    "fullName": "Talha",
+    "email": "owner@stokio.local",
+    "role": "Owner"
+  }
+}
+```
+
+`POST /api/v1/auth/refresh`
+
+Body gönderilmez. Geçerli refresh cookie ve `X-STOKIO-Refresh: 1` header'ı varsa yeni access token döner ve refresh cookie rotate edilir.
+
+`POST /api/v1/auth/logout`
+
+Body gönderilmez. Geçerli refresh cookie varsa revoke edilir ve cookie temizlenir.
 
 ## Products
 
@@ -529,6 +560,14 @@ Excel `.xlsx` çıktıları:
 `GET /api/v1/exports/movements.xlsx`
 
 `GET /api/v1/exports/count-differences/{countId}.xlsx`
+
+Async export job endpoints:
+
+- `POST /api/v1/exports/jobs`
+- `GET /api/v1/exports/jobs/{jobId}`
+- `GET /api/v1/exports/jobs/{jobId}/download`
+
+Job response fields include `status`, `completedAt`, `expiresAt`, `nextAttemptAt`, `failedReasonCode` and `errorMessage`. Failed attempts are retried with exponential backoff until `MaxRetryCount`; expired files and retained terminal rows are cleaned by the background worker.
 
 ## Error Format
 

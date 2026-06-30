@@ -19,6 +19,8 @@ export type ExportJob = {
   createdAt: string;
   completedAt: string | null;
   expiresAt: string;
+  nextAttemptAt: string | null;
+  failedReasonCode: string | null;
   errorMessage: string | null;
 };
 

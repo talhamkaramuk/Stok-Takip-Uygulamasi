@@ -19,6 +19,13 @@ public sealed class ExportJob : Entity, ITenantScoped
     public string ContentType { get; set; } = string.Empty;
     public string? StorageKey { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? FailedReasonCode { get; set; }
+    public string? LockedBy { get; set; }
+    public DateTimeOffset? LockedUntil { get; set; }
+    public int RetryCount { get; set; }
+    public int MaxRetryCount { get; set; } = 3;
+    public DateTimeOffset? LastAttemptAt { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
 }

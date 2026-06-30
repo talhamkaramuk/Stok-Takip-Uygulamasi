@@ -21,4 +21,6 @@ public sealed record ExportJobDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt,
     DateTimeOffset ExpiresAt,
+    DateTimeOffset? NextAttemptAt,
+    string? FailedReasonCode,
     string? ErrorMessage);

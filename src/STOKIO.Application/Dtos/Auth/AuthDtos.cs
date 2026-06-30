@@ -28,3 +28,8 @@ public sealed record AuthResponse(
     string AccessToken,
     DateTimeOffset ExpiresAt,
     UserProfile User);
+
+public sealed record AuthSession(
+    AuthResponse Response,
+    string RefreshToken,
+    DateTimeOffset RefreshTokenExpiresAt);

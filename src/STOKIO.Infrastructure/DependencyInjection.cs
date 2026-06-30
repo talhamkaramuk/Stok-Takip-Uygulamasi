@@ -21,6 +21,7 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString);
         });
 
+        services.AddSingleton(Options.Create(AuthOptions.FromConfiguration(configuration)));
         services.AddSingleton(Options.Create(JwtOptions.FromConfiguration(configuration)));
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICategoryService, CategoryService>();
@@ -41,7 +42,6 @@ public static class DependencyInjection
         services.AddScoped<IExportJobProcessor, ExportJobProcessor>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IDashboardService, DashboardService>();
-        services.AddSingleton<IExportJobQueue, ExportJobQueue>();
         services.AddSingleton<ExportJobFileStore>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();

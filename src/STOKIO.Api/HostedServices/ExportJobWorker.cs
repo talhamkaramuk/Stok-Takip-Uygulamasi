@@ -4,56 +4,66 @@ namespace STOKIO.Api.HostedServices;
 
 public sealed class ExportJobWorker(
     IServiceProvider serviceProvider,
-    IExportJobQueue exportJobQueue,
+    IConfiguration configuration,
     ILogger<ExportJobWorker> logger) : BackgroundService
 {
+    private readonly TimeSpan _idleDelay = ResolveIdleDelay(configuration);
+    private readonly TimeSpan _cleanupInterval = ResolveCleanupInterval(configuration);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RecoverPendingJobsAsync(stoppingToken);
+        var nextCleanupAt = DateTimeOffset.MinValue;
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            Guid jobId;
             try
             {
-                jobId = await exportJobQueue.DequeueAsync(stoppingToken);
+                using var scope = serviceProvider.CreateScope();
+                var processor = scope.ServiceProvider.GetRequiredService<IExportJobProcessor>();
+
+                if (DateTimeOffset.UtcNow >= nextCleanupAt)
+                {
+                    var cleaned = await processor.CleanupExpiredAsync(stoppingToken);
+                    if (cleaned > 0)
+                    {
+                        logger.LogInformation("Export job cleanup removed {CleanedCount} expired artifacts or retained rows.", cleaned);
+                    }
+
+                    nextCleanupAt = DateTimeOffset.UtcNow.Add(_cleanupInterval);
+                }
+
+                var processed = await processor.ProcessNextAsync(stoppingToken);
+
+                if (!processed)
+                {
+                    await Task.Delay(_idleDelay, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-
-            await ProcessJobAsync(jobId, stoppingToken);
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Export job worker polling failed.");
+                await Task.Delay(_idleDelay, stoppingToken);
+            }
         }
     }
 
-    private async Task RecoverPendingJobsAsync(CancellationToken cancellationToken)
+    private static TimeSpan ResolveIdleDelay(IConfiguration configuration)
     {
-        using var scope = serviceProvider.CreateScope();
-        var processor = scope.ServiceProvider.GetRequiredService<IExportJobProcessor>();
-        var pendingJobIds = await processor.RecoverPendingAsync(cancellationToken);
-
-        foreach (var jobId in pendingJobIds)
-        {
-            await exportJobQueue.EnqueueAsync(jobId, cancellationToken);
-        }
+        var milliseconds = configuration.GetValue<int?>("Exports:WorkerIdleDelayMilliseconds");
+        return milliseconds is > 0
+            ? TimeSpan.FromMilliseconds(milliseconds.Value)
+            : TimeSpan.FromSeconds(2);
     }
 
-    private async Task ProcessJobAsync(Guid jobId, CancellationToken cancellationToken)
+    private static TimeSpan ResolveCleanupInterval(IConfiguration configuration)
     {
-        try
-        {
-            using var scope = serviceProvider.CreateScope();
-            var processor = scope.ServiceProvider.GetRequiredService<IExportJobProcessor>();
-            await processor.ProcessAsync(jobId, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(exception, "Export job worker could not process job {ExportJobId}.", jobId);
-        }
+        var minutes = configuration.GetValue<int?>("Exports:CleanupIntervalMinutes");
+        return minutes is > 0
+            ? TimeSpan.FromMinutes(minutes.Value)
+            : TimeSpan.FromMinutes(30);
     }
 }

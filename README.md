@@ -83,7 +83,7 @@ npm run dev
 
 Frontend varsayılan olarak `http://localhost:5248` API adresine gider. Farklı adres için `frontend/.env` içinde `VITE_API_BASE_URL` tanımlayın.
 
-Güvenlik notu: Frontend access token'ı kalıcı tarayıcı storage alanında saklamaz; oturum yenileme sonrası kullanıcı tekrar giriş yapar. Demo giriş bilgileri yalnızca Vite development modunda veya `VITE_ENABLE_DEMO_CREDENTIALS=true` tanımlandığında formda hazır gelir. Varsayılan access token süresi 15 dakikadır; Docker profilinde `STOKIO_ACCESS_TOKEN_MINUTES` ile değiştirilebilir.
+Güvenlik notu: Frontend access token'ı `localStorage` veya `sessionStorage` içinde saklamaz; token yalnızca memory state içinde tutulur. Login/register sonrası API HttpOnly refresh cookie yazar, frontend `/api/v1/auth/refresh` ile kısa ömürlü access token yeniler. Refresh cookie production ortamında `HttpOnly`, `Secure`, `SameSite=Lax` ve rotation modeliyle çalışır. Refresh/logout istekleri `X-STOKIO-Refresh: 1` header'ı gerektirir; frontend CSP meta policy ile script/connect yüzeyini sınırlar. Demo giriş bilgileri yalnızca Vite development modunda veya `VITE_ENABLE_DEMO_CREDENTIALS=true` tanımlandığında formda hazır gelir. Varsayılan access token süresi 15 dakikadır; Docker profilinde `STOKIO_ACCESS_TOKEN_MINUTES` ile değiştirilebilir. Varsayılan refresh token süresi 14 gündür; Docker profilinde `STOKIO_REFRESH_TOKEN_DAYS` ile değiştirilebilir.
 
 ## Testler
 
@@ -155,3 +155,11 @@ Ek ayrıntılar için:
 - [API](docs/API.md)
 - [Güvenlik](docs/SECURITY.md)
 - [Üretim Hazırlığı](docs/PRODUCTION_READINESS.md)
+
+## Export Job Operasyonu
+
+- Arka plan export job'lari Postgres uzerinden atomik claim edilir; coklu API replica ayni job'i ayni anda isleyemez.
+- `Exports:JobLockTimeoutSeconds`, beklenen en uzun export suresinden buyuk tutulmalidir.
+- Basarisiz export job'lari `RetryBackoffBaseSeconds` ile baslayan exponential backoff uygular, `RetryBackoffMaxSeconds` ile sinirlanir ve varsayilan olarak en fazla 3 kez denenir.
+- Worker, `CleanupIntervalMinutes` araliginda expired export dosyalarini siler; `CompletedRetentionDays` suresini asan `Ready`/`Failed` job satirlari DB'den kaldirilir.
+- `Exports:StoragePath` development ve tek-node kurulumlarda local filesystem icindir. Scale-out uretimde bu path tum replica'lar tarafindan paylasilan kalici storage olmalidir; object storage/signed URL entegrasyonu ayri adapter olarak eklenmelidir.
