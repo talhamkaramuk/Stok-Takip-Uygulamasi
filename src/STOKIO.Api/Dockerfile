@@ -15,6 +15,14 @@ COPY . .
 RUN dotnet publish "src/STOKIO.Api/STOKIO.Api.csproj" -c Release -o /app/publish --no-restore
 
 FROM base AS final
+ARG APP_UID=1654
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_EnableDiagnostics=0 \
+    Exports__StoragePath=/var/lib/stokio/export-files \
+    STOKIO_HEALTHCHECK_URL=http://127.0.0.1:8080/health/ready
 WORKDIR /app
+RUN mkdir -p /var/lib/stokio/export-files && chown -R ${APP_UID}:0 /var/lib/stokio
 COPY --from=build /app/publish .
+USER ${APP_UID}
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD ["dotnet", "STOKIO.Api.dll", "--container-healthcheck"]
 ENTRYPOINT ["dotnet", "STOKIO.Api.dll"]

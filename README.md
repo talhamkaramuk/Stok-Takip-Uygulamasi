@@ -113,10 +113,10 @@ Relational testler hedef database'i sifirlar. Guvenlik icin connection string ic
 Bilgisayarda baska bir PostgreSQL zaten `5432` portunu kullaniyorsa test portunu ayirin:
 
 ```powershell
-$env:POSTGRES_PORT="55432"
+$env:POSTGRES_PORT="15432"
 docker compose up -d --force-recreate postgres
 docker compose exec -T postgres psql -U stokio -d postgres -c "CREATE DATABASE stokio_test;"
-$env:STOKIO_TEST_POSTGRES_CONNECTION_STRING="Host=localhost;Port=55432;Database=stokio_test;Username=stokio;Password=stokio_dev_password"
+$env:STOKIO_TEST_POSTGRES_CONNECTION_STRING="Host=localhost;Port=15432;Database=stokio_test;Username=stokio;Password=stokio_dev_password"
 dotnet test --filter "Layer=RelationalIntegration"
 ```
 

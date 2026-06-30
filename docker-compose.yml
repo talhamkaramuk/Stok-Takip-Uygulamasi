@@ -31,8 +31,18 @@ services:
       Jwt__SigningKey: ${STOKIO_JWT_SIGNING_KEY:-development-only-change-this-32-byte-minimum-key}
       Jwt__AccessTokenMinutes: ${STOKIO_ACCESS_TOKEN_MINUTES:-15}
       Cors__AllowedOrigins__0: http://localhost:5173
+      Exports__StoragePath: ${STOKIO_EXPORTS_STORAGE_PATH:-/var/lib/stokio/export-files}
     ports:
       - "8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - api_export_files:/var/lib/stokio/export-files
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,8 +61,10 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  api_export_files:
   web_node_modules:

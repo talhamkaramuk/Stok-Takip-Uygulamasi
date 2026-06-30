@@ -18,6 +18,11 @@ using STOKIO.Infrastructure.Persistence;
 using STOKIO.Infrastructure.Security;
 using STOKIO.Infrastructure.Services;
 
+if (IsContainerHealthCheck(args))
+{
+    return await RunContainerHealthCheckAsync(args);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((context, configuration) =>
@@ -177,8 +182,16 @@ app.MapGet("/health/ready", async (
 
             if (databaseAvailable && dbContext.Database.IsRelational())
             {
-                pendingMigrations = (await dbContext.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
-                appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToArray();
+                var hasMigrationHistory = await MigrationHistoryTableExistsAsync(dbContext, cancellationToken);
+                if (hasMigrationHistory)
+                {
+                    pendingMigrations = (await dbContext.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
+                    appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToArray();
+                }
+                else if (!app.Environment.IsDevelopment())
+                {
+                    pendingMigrations = dbContext.Database.GetMigrations().ToArray();
+                }
             }
 
             await exportJobFileStore.CheckWritableAsync(cancellationToken);
@@ -259,6 +272,77 @@ app.MapDashboardEndpoints("/api/v1/dashboard");
 app.MapObservabilityEndpoints("/api/v1/observability");
 
 await app.RunAsync();
+return 0;
+
+static bool IsContainerHealthCheck(string[] args)
+{
+    return args.Any(value => string.Equals(value, "--container-healthcheck", StringComparison.Ordinal));
+}
+
+static async Task<int> RunContainerHealthCheckAsync(string[] args)
+{
+    var explicitUrlIndex = Array.FindIndex(args, value => string.Equals(value, "--container-healthcheck", StringComparison.Ordinal)) + 1;
+    var explicitUrl = explicitUrlIndex > 0 && explicitUrlIndex < args.Length ? args[explicitUrlIndex] : null;
+    var healthCheckUrl = explicitUrl
+        ?? Environment.GetEnvironmentVariable("STOKIO_HEALTHCHECK_URL")
+        ?? "http://127.0.0.1:8080/health/ready";
+
+    if (!Uri.TryCreate(healthCheckUrl, UriKind.Absolute, out var uri))
+    {
+        return 1;
+    }
+
+    try
+    {
+        using var httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(3)
+        };
+        using var response = await httpClient.GetAsync(uri);
+        return response.IsSuccessStatusCode ? 0 : 1;
+    }
+    catch
+    {
+        return 1;
+    }
+}
+
+static async Task<bool> MigrationHistoryTableExistsAsync(StokioDbContext dbContext, CancellationToken cancellationToken)
+{
+    if (dbContext.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) != true)
+    {
+        return true;
+    }
+
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State == System.Data.ConnectionState.Closed;
+    if (shouldClose)
+    {
+        await connection.OpenAsync(cancellationToken);
+    }
+
+    try
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = '__EFMigrationsHistory'
+            );
+            """;
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is true;
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
 
 static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
 {
