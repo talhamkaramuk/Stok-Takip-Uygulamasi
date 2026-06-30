@@ -603,6 +603,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<Guid?>("SupplierId")
                         .HasColumnType("uuid");
 
@@ -631,7 +636,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "RequestNumber")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedAt");
+
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt");
 
                     b.ToTable("PurchaseRequests");
                 });
@@ -774,6 +783,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -794,7 +808,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "ReturnNumber")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedAt");
+
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt");
 
                     b.ToTable("ReturnRequests");
                 });
@@ -871,6 +889,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -891,7 +914,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "OrderNumber")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedAt");
+
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt");
 
                     b.ToTable("SalesOrders");
                 });
@@ -991,6 +1018,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -1015,7 +1047,11 @@ namespace STOKIO.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "ShipmentNumber")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedAt");
+
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt");
 
                     b.ToTable("Shipments");
                 });

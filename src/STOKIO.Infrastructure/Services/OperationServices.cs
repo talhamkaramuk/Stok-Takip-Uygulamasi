@@ -33,11 +33,8 @@ public sealed class SalesOrderService(
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim().ToLower();
-            query = query.Where(x =>
-                x.OrderNumber.ToLower().Contains(term) ||
-                x.CustomerName.ToLower().Contains(term) ||
-                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)));
+            var term = OperationSearchText.Normalize(search);
+            query = query.Where(x => x.SearchText.Contains(term));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -68,6 +65,7 @@ public sealed class SalesOrderService(
             Notes = OperationText.Optional(request.Notes),
             CreatedByUserId = currentUser.UserId
         };
+        order.SearchText = OperationSearchText.Build(order.OrderNumber, order.CustomerName, warehouse.Name);
 
         foreach (var item in items)
         {
@@ -115,11 +113,8 @@ public sealed class PurchaseRequestService(
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim().ToLower();
-            query = query.Where(x =>
-                x.RequestNumber.ToLower().Contains(term) ||
-                x.SupplierName.ToLower().Contains(term) ||
-                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)));
+            var term = OperationSearchText.Normalize(search);
+            query = query.Where(x => x.SearchText.Contains(term));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -150,6 +145,7 @@ public sealed class PurchaseRequestService(
             Notes = OperationText.Optional(request.Notes),
             RequestedByUserId = currentUser.UserId
         };
+        purchaseRequest.SearchText = OperationSearchText.Build(purchaseRequest.RequestNumber, purchaseRequest.SupplierName, warehouse.Name);
 
         foreach (var item in items)
         {
@@ -318,13 +314,8 @@ public sealed class ShipmentService(
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim().ToLower();
-            query = query.Where(x =>
-                x.ShipmentNumber.ToLower().Contains(term) ||
-                x.RecipientName.ToLower().Contains(term) ||
-                (x.TrackingNumber != null && x.TrackingNumber.ToLower().Contains(term)) ||
-                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)) ||
-                (x.SalesOrder != null && x.SalesOrder.OrderNumber.ToLower().Contains(term)));
+            var term = OperationSearchText.Normalize(search);
+            query = query.Where(x => x.SearchText.Contains(term));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -383,6 +374,7 @@ public sealed class ShipmentService(
                 Notes = OperationText.Optional(request.Notes),
                 ShippedAt = clock.UtcNow
             };
+            shipment.SearchText = OperationSearchText.Build(shipment.ShipmentNumber, shipment.RecipientName, shipment.TrackingNumber, warehouse.Name, order?.OrderNumber);
 
             var stockMetricEvents = new List<(StockMovementType Type, int Quantity, bool IsCritical)>();
             foreach (var item in items)
@@ -483,13 +475,8 @@ public sealed class ReturnRequestService(
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim().ToLower();
-            query = query.Where(x =>
-                x.ReturnNumber.ToLower().Contains(term) ||
-                x.CustomerName.ToLower().Contains(term) ||
-                x.Reason.ToLower().Contains(term) ||
-                (x.Warehouse != null && x.Warehouse.Name.ToLower().Contains(term)) ||
-                (x.SalesOrder != null && x.SalesOrder.OrderNumber.ToLower().Contains(term)));
+            var term = OperationSearchText.Normalize(search);
+            query = query.Where(x => x.SearchText.Contains(term));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -547,6 +534,7 @@ public sealed class ReturnRequestService(
                 Reason = request.Reason.Trim(),
                 ReceivedAt = clock.UtcNow
             };
+            returnRequest.SearchText = OperationSearchText.Build(returnRequest.ReturnNumber, returnRequest.CustomerName, returnRequest.Reason, warehouse.Name, order?.OrderNumber);
 
             var stockMetricEvents = new List<(StockMovementType Type, int Quantity, bool IsCritical)>();
             foreach (var item in items)

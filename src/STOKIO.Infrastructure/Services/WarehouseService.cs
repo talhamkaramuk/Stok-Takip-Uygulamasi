@@ -104,6 +104,9 @@ public sealed class WarehouseService(
             throw new AppProblemException(400, "default_warehouse_required", "Default warehouse cannot be deactivated.");
         }
 
+        var newName = request.Name.Trim();
+        var nameChanged = !string.Equals(warehouse.Name, newName, StringComparison.Ordinal);
+
         if (request.IsDefault)
         {
             await ClearDefaultAsync(cancellationToken);
@@ -114,10 +117,15 @@ public sealed class WarehouseService(
         }
 
         warehouse.Code = code;
-        warehouse.Name = request.Name.Trim();
+        warehouse.Name = newName;
         warehouse.Address = string.IsNullOrWhiteSpace(request.Address) ? null : request.Address.Trim();
         warehouse.IsDefault = request.IsDefault || warehouse.IsDefault;
         warehouse.IsActive = request.IsActive;
+
+        if (nameChanged)
+        {
+            await RefreshOperationSearchTextForWarehouseAsync(warehouse.Id, warehouse.Name, cancellationToken);
+        }
 
         auditWriter.AddSnapshot("warehouse.updated", nameof(Warehouse), warehouse.Id, oldValue, WarehouseSnapshot(warehouse));
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -387,6 +395,53 @@ public sealed class WarehouseService(
         if (exists)
         {
             throw new AppProblemException(409, "warehouse_code_exists", "A warehouse with this code already exists.");
+        }
+    }
+
+    private async Task RefreshOperationSearchTextForWarehouseAsync(Guid warehouseId, string warehouseName, CancellationToken cancellationToken)
+    {
+        var orders = await dbContext.SalesOrders
+            .Where(x => x.WarehouseId == warehouseId)
+            .ToListAsync(cancellationToken);
+        foreach (var order in orders)
+        {
+            order.SearchText = OperationSearchText.Build(order.OrderNumber, order.CustomerName, warehouseName);
+        }
+
+        var purchases = await dbContext.PurchaseRequests
+            .Where(x => x.WarehouseId == warehouseId)
+            .ToListAsync(cancellationToken);
+        foreach (var purchase in purchases)
+        {
+            purchase.SearchText = OperationSearchText.Build(purchase.RequestNumber, purchase.SupplierName, warehouseName);
+        }
+
+        var shipments = await dbContext.Shipments
+            .Include(x => x.SalesOrder)
+            .Where(x => x.WarehouseId == warehouseId)
+            .ToListAsync(cancellationToken);
+        foreach (var shipment in shipments)
+        {
+            shipment.SearchText = OperationSearchText.Build(
+                shipment.ShipmentNumber,
+                shipment.RecipientName,
+                shipment.TrackingNumber,
+                warehouseName,
+                shipment.SalesOrder?.OrderNumber);
+        }
+
+        var returns = await dbContext.ReturnRequests
+            .Include(x => x.SalesOrder)
+            .Where(x => x.WarehouseId == warehouseId)
+            .ToListAsync(cancellationToken);
+        foreach (var returnRequest in returns)
+        {
+            returnRequest.SearchText = OperationSearchText.Build(
+                returnRequest.ReturnNumber,
+                returnRequest.CustomerName,
+                returnRequest.Reason,
+                warehouseName,
+                returnRequest.SalesOrder?.OrderNumber);
         }
     }
 

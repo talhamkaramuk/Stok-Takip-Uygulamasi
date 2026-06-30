@@ -16,6 +16,7 @@ public sealed class ReturnRequest : Entity, ITenantScoped
     public Warehouse? Warehouse { get; set; }
     public string CustomerName { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
+    public string SearchText { get; set; } = string.Empty;
     public ReturnRequestStatus Status { get; set; } = ReturnRequestStatus.Received;
     public DateTimeOffset ReceivedAt { get; set; }
     public List<ReturnRequestItem> Items { get; } = [];

@@ -290,13 +290,14 @@ public static class DevelopmentDataSeeder
             var quantity = 3 + i % 3;
             var shippedQuantity = i < 3 ? 0 : i < 5 ? quantity - 1 : quantity;
             var returnedQuantity = i >= 4 ? 1 : 0;
+            var warehouse = warehouses[i % 2 == 0 ? "MAIN" : "ANK"];
             var order = new SalesOrder
             {
                 TenantId = tenantId,
                 OrderNumber = $"SO-DEMO-{i + 1:000}",
                 CustomerId = customer.Id,
                 CustomerName = customer.Name,
-                WarehouseId = warehouses[i % 2 == 0 ? "MAIN" : "ANK"].Id,
+                WarehouseId = warehouse.Id,
                 Status = shippedQuantity == 0
                     ? SalesOrderStatus.Pending
                     : shippedQuantity < quantity
@@ -304,6 +305,7 @@ public static class DevelopmentDataSeeder
                         : SalesOrderStatus.Shipped,
                 Notes = "Demo sipariş"
             };
+            order.SearchText = OperationSearchText.Build(order.OrderNumber, order.CustomerName, warehouse.Name);
             order.Items.Add(new SalesOrderItem
             {
                 TenantId = tenantId,
@@ -340,6 +342,7 @@ public static class DevelopmentDataSeeder
                 ApprovedAt = i >= 2 ? now.AddDays(-i) : null,
                 ReceivedAt = i >= 4 ? now.AddDays(-i + 1) : null
             };
+            request.SearchText = OperationSearchText.Build(request.RequestNumber, request.SupplierName, warehouses["MAIN"].Name);
             request.Items.Add(new PurchaseRequestItem { TenantId = tenantId, ProductId = product.Id, Quantity = quantity, ReceivedQuantity = receivedQuantity });
             purchases.Add(request);
         }
@@ -362,6 +365,12 @@ public static class DevelopmentDataSeeder
                 Status = ShipmentStatus.Completed,
                 ShippedAt = now.AddDays(-i)
             };
+            shipment.SearchText = OperationSearchText.Build(
+                shipment.ShipmentNumber,
+                shipment.RecipientName,
+                shipment.TrackingNumber,
+                warehouses.Values.Single(x => x.Id == shipment.WarehouseId).Name,
+                order.OrderNumber);
             shipment.Items.Add(new ShipmentItem { TenantId = tenantId, ProductId = orderItem.ProductId, Quantity = orderItem.ShippedQuantity });
             shipments.Add(shipment);
         }
@@ -384,6 +393,12 @@ public static class DevelopmentDataSeeder
                 Status = ReturnRequestStatus.Received,
                 ReceivedAt = now.AddDays(-i)
             };
+            returnRequest.SearchText = OperationSearchText.Build(
+                returnRequest.ReturnNumber,
+                returnRequest.CustomerName,
+                returnRequest.Reason,
+                warehouses.Values.Single(x => x.Id == returnRequest.WarehouseId).Name,
+                order.OrderNumber);
             returnRequest.Items.Add(new ReturnRequestItem { TenantId = tenantId, ProductId = orderItem.ProductId, Quantity = orderItem.ReturnedQuantity });
             returns.Add(returnRequest);
         }

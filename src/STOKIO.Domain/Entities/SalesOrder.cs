@@ -11,6 +11,7 @@ public sealed class SalesOrder : Entity, ITenantScoped
     public Guid? CustomerId { get; set; }
     public Customer? Customer { get; set; }
     public string CustomerName { get; set; } = string.Empty;
+    public string SearchText { get; set; } = string.Empty;
     public Guid? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }
     public SalesOrderStatus Status { get; set; } = SalesOrderStatus.Pending;

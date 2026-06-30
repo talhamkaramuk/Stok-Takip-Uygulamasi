@@ -536,6 +536,7 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "OrderNumber" character varying(40) NOT NULL,
             "CustomerId" uuid NULL,
             "CustomerName" character varying(180) NOT NULL,
+            "SearchText" character varying(2048) NOT NULL DEFAULT '',
             "WarehouseId" uuid NULL,
             "Status" character varying(32) NOT NULL,
             "Notes" character varying(500) NULL,
@@ -577,6 +578,7 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "RequestNumber" character varying(40) NOT NULL,
             "SupplierId" uuid NULL,
             "SupplierName" character varying(180) NOT NULL,
+            "SearchText" character varying(2048) NOT NULL DEFAULT '',
             "WarehouseId" uuid NULL,
             "Status" character varying(32) NOT NULL,
             "Notes" character varying(500) NULL,
@@ -620,6 +622,7 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "WarehouseId" uuid NULL,
             "RecipientName" character varying(180) NOT NULL,
             "TrackingNumber" character varying(80) NULL,
+            "SearchText" character varying(2048) NOT NULL DEFAULT '',
             "Status" character varying(32) NOT NULL,
             "ShippedAt" timestamp with time zone NOT NULL,
             "Notes" character varying(500) NULL,
@@ -656,6 +659,7 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "WarehouseId" uuid NULL,
             "CustomerName" character varying(180) NOT NULL,
             "Reason" character varying(500) NOT NULL,
+            "SearchText" character varying(2048) NOT NULL DEFAULT '',
             "Status" character varying(32) NOT NULL,
             "ReceivedAt" timestamp with time zone NOT NULL,
             CONSTRAINT "PK_ReturnRequests" PRIMARY KEY ("Id"),
@@ -684,6 +688,10 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         ALTER TABLE "PurchaseRequests" ADD COLUMN IF NOT EXISTS "SupplierId" uuid;
         ALTER TABLE "Shipments" ADD COLUMN IF NOT EXISTS "CustomerId" uuid;
         ALTER TABLE "ReturnRequests" ADD COLUMN IF NOT EXISTS "CustomerId" uuid;
+        ALTER TABLE "SalesOrders" ADD COLUMN IF NOT EXISTS "SearchText" character varying(2048) NOT NULL DEFAULT '';
+        ALTER TABLE "PurchaseRequests" ADD COLUMN IF NOT EXISTS "SearchText" character varying(2048) NOT NULL DEFAULT '';
+        ALTER TABLE "Shipments" ADD COLUMN IF NOT EXISTS "SearchText" character varying(2048) NOT NULL DEFAULT '';
+        ALTER TABLE "ReturnRequests" ADD COLUMN IF NOT EXISTS "SearchText" character varying(2048) NOT NULL DEFAULT '';
         ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "ShippedQuantity" integer NOT NULL DEFAULT 0;
         ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "ReturnedQuantity" integer NOT NULL DEFAULT 0;
         ALTER TABLE "SalesOrderItems" ADD COLUMN IF NOT EXISTS "Version" integer NOT NULL DEFAULT 1;
@@ -703,6 +711,38 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
           AND soi."ShippedQuantity" = 0;
         UPDATE "SalesOrders" SET "Status" = 'Pending' WHERE "Status" = 'Preparing';
         UPDATE "SalesOrders" SET "Status" = 'Shipped' WHERE "Status" = 'Completed';
+        UPDATE "SalesOrders" AS sales
+        SET "SearchText" = left(trim(regexp_replace(lower(concat_ws(' ',
+            sales."OrderNumber",
+            sales."CustomerName",
+            (SELECT warehouse."Name" FROM "Warehouses" AS warehouse WHERE warehouse."Id" = sales."WarehouseId")
+        )), '\s+', ' ', 'g')), 2048)
+        WHERE sales."SearchText" = '';
+        UPDATE "PurchaseRequests" AS purchase
+        SET "SearchText" = left(trim(regexp_replace(lower(concat_ws(' ',
+            purchase."RequestNumber",
+            purchase."SupplierName",
+            (SELECT warehouse."Name" FROM "Warehouses" AS warehouse WHERE warehouse."Id" = purchase."WarehouseId")
+        )), '\s+', ' ', 'g')), 2048)
+        WHERE purchase."SearchText" = '';
+        UPDATE "Shipments" AS shipment
+        SET "SearchText" = left(trim(regexp_replace(lower(concat_ws(' ',
+            shipment."ShipmentNumber",
+            shipment."RecipientName",
+            shipment."TrackingNumber",
+            (SELECT warehouse."Name" FROM "Warehouses" AS warehouse WHERE warehouse."Id" = shipment."WarehouseId"),
+            (SELECT sales."OrderNumber" FROM "SalesOrders" AS sales WHERE sales."Id" = shipment."SalesOrderId")
+        )), '\s+', ' ', 'g')), 2048)
+        WHERE shipment."SearchText" = '';
+        UPDATE "ReturnRequests" AS return_request
+        SET "SearchText" = left(trim(regexp_replace(lower(concat_ws(' ',
+            return_request."ReturnNumber",
+            return_request."CustomerName",
+            return_request."Reason",
+            (SELECT warehouse."Name" FROM "Warehouses" AS warehouse WHERE warehouse."Id" = return_request."WarehouseId"),
+            (SELECT sales."OrderNumber" FROM "SalesOrders" AS sales WHERE sales."Id" = return_request."SalesOrderId")
+        )), '\s+', ' ', 'g')), 2048)
+        WHERE return_request."SearchText" = '';
 
         DO $$
         BEGIN
@@ -741,18 +781,31 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_SalesOrders_TenantId_OrderNumber" ON "SalesOrders" ("TenantId", "OrderNumber");
         CREATE INDEX IF NOT EXISTS "IX_SalesOrders_TenantId_CustomerId" ON "SalesOrders" ("TenantId", "CustomerId");
         CREATE INDEX IF NOT EXISTS "IX_SalesOrders_TenantId_Status" ON "SalesOrders" ("TenantId", "Status");
+        CREATE INDEX IF NOT EXISTS "IX_SalesOrders_TenantId_CreatedAt" ON "SalesOrders" ("TenantId", "CreatedAt");
+        CREATE INDEX IF NOT EXISTS "IX_SalesOrders_TenantId_Status_CreatedAt" ON "SalesOrders" ("TenantId", "Status", "CreatedAt");
         CREATE INDEX IF NOT EXISTS "IX_SalesOrderItems_TenantId_SalesOrderId_ProductId" ON "SalesOrderItems" ("TenantId", "SalesOrderId", "ProductId");
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_PurchaseRequests_TenantId_RequestNumber" ON "PurchaseRequests" ("TenantId", "RequestNumber");
         CREATE INDEX IF NOT EXISTS "IX_PurchaseRequests_TenantId_SupplierId" ON "PurchaseRequests" ("TenantId", "SupplierId");
         CREATE INDEX IF NOT EXISTS "IX_PurchaseRequests_TenantId_Status" ON "PurchaseRequests" ("TenantId", "Status");
+        CREATE INDEX IF NOT EXISTS "IX_PurchaseRequests_TenantId_CreatedAt" ON "PurchaseRequests" ("TenantId", "CreatedAt");
+        CREATE INDEX IF NOT EXISTS "IX_PurchaseRequests_TenantId_Status_CreatedAt" ON "PurchaseRequests" ("TenantId", "Status", "CreatedAt");
         CREATE INDEX IF NOT EXISTS "IX_PurchaseRequestItems_TenantId_PurchaseRequestId_ProductId" ON "PurchaseRequestItems" ("TenantId", "PurchaseRequestId", "ProductId");
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_Shipments_TenantId_ShipmentNumber" ON "Shipments" ("TenantId", "ShipmentNumber");
         CREATE INDEX IF NOT EXISTS "IX_Shipments_TenantId_CustomerId" ON "Shipments" ("TenantId", "CustomerId");
         CREATE INDEX IF NOT EXISTS "IX_Shipments_TenantId_Status" ON "Shipments" ("TenantId", "Status");
+        CREATE INDEX IF NOT EXISTS "IX_Shipments_TenantId_CreatedAt" ON "Shipments" ("TenantId", "CreatedAt");
+        CREATE INDEX IF NOT EXISTS "IX_Shipments_TenantId_Status_CreatedAt" ON "Shipments" ("TenantId", "Status", "CreatedAt");
         CREATE INDEX IF NOT EXISTS "IX_ShipmentItems_TenantId_ShipmentId_ProductId" ON "ShipmentItems" ("TenantId", "ShipmentId", "ProductId");
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_ReturnRequests_TenantId_ReturnNumber" ON "ReturnRequests" ("TenantId", "ReturnNumber");
         CREATE INDEX IF NOT EXISTS "IX_ReturnRequests_TenantId_CustomerId" ON "ReturnRequests" ("TenantId", "CustomerId");
         CREATE INDEX IF NOT EXISTS "IX_ReturnRequests_TenantId_Status" ON "ReturnRequests" ("TenantId", "Status");
+        CREATE INDEX IF NOT EXISTS "IX_ReturnRequests_TenantId_CreatedAt" ON "ReturnRequests" ("TenantId", "CreatedAt");
+        CREATE INDEX IF NOT EXISTS "IX_ReturnRequests_TenantId_Status_CreatedAt" ON "ReturnRequests" ("TenantId", "Status", "CreatedAt");
         CREATE INDEX IF NOT EXISTS "IX_ReturnRequestItems_TenantId_ReturnRequestId_ProductId" ON "ReturnRequestItems" ("TenantId", "ReturnRequestId", "ProductId");
+        CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        CREATE INDEX IF NOT EXISTS "IX_SalesOrders_SearchText_Trgm" ON "SalesOrders" USING gin ("SearchText" gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS "IX_PurchaseRequests_SearchText_Trgm" ON "PurchaseRequests" USING gin ("SearchText" gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS "IX_Shipments_SearchText_Trgm" ON "Shipments" USING gin ("SearchText" gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS "IX_ReturnRequests_SearchText_Trgm" ON "ReturnRequests" USING gin ("SearchText" gin_trgm_ops);
         """);
 }

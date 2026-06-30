@@ -3,6 +3,7 @@ using STOKIO.Application.Abstractions;
 using STOKIO.Application.Common;
 using STOKIO.Application.Dtos.Operations;
 using STOKIO.Application.Dtos.Stock;
+using STOKIO.Application.Dtos.Warehouses;
 using STOKIO.Domain.Entities;
 using STOKIO.Domain.Enums;
 using STOKIO.Infrastructure.Persistence;
@@ -40,6 +41,49 @@ public sealed class OperationServicesTests
         Assert.NotEqual(first.OrderNumber, second.OrderNumber);
         Assert.Matches(@"^SO-\d{8}-[0-9A-F]{8}$", first.OrderNumber);
         Assert.Matches(@"^SO-\d{8}-[0-9A-F]{8}$", second.OrderNumber);
+    }
+
+    [Fact]
+    public async Task SalesOrderList_SearchesNormalizedOperationSearchText()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var dbContext = CreateDbContext(tenantId);
+        var tenant = new TestCurrentTenant(tenantId);
+        var user = new TestCurrentUser();
+        var clock = new TestClock();
+        var auditWriter = new AuditWriter(dbContext, tenant, user);
+        var ledger = new WarehouseStockLedger(dbContext, tenant);
+        var warehouseService = new WarehouseService(dbContext, tenant, user, ledger, auditWriter);
+        var orderService = new SalesOrderService(dbContext, tenant, user, clock, ledger, auditWriter);
+        var product = new Product
+        {
+            TenantId = tenantId,
+            Sku = "ORDER-SEARCH-1",
+            Name = "Search Product",
+            CurrentStock = 0,
+            CriticalStockLevel = 1
+        };
+        dbContext.Products.Add(product);
+        await dbContext.SaveChangesAsync();
+        var warehouse = await warehouseService.CreateAsync(
+            new CreateWarehouseRequest("NORTH", "North Hub", null, false),
+            CancellationToken.None);
+
+        await orderService.CreateAsync(
+            new CreateSalesOrderRequest("Acme Retail", warehouse.Id, null, [new OperationItemRequest(product.Id, 1)]),
+            CancellationToken.None);
+
+        var byCustomer = await orderService.ListAsync("ACME", null, 1, 10, CancellationToken.None);
+        var byWarehouse = await orderService.ListAsync("north", null, 1, 10, CancellationToken.None);
+        await warehouseService.UpdateAsync(
+            warehouse.Id,
+            new UpdateWarehouseRequest(warehouse.Code, "Central Hub", warehouse.Address, false, true),
+            CancellationToken.None);
+        var byRenamedWarehouse = await orderService.ListAsync("central", null, 1, 10, CancellationToken.None);
+
+        Assert.Single(byCustomer.Items);
+        Assert.Single(byWarehouse.Items);
+        Assert.Single(byRenamedWarehouse.Items);
     }
 
     [Fact]
