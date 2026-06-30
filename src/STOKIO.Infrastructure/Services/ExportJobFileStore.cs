@@ -31,6 +31,18 @@ public sealed class ExportJobFileStore(IConfiguration configuration)
         return await File.ReadAllBytesAsync(path, cancellationToken);
     }
 
+    public bool DeleteIfExists(string storageKey)
+    {
+        var path = ResolvePath(storageKey);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        File.Delete(path);
+        return true;
+    }
+
     public async Task CheckWritableAsync(CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_rootPath);

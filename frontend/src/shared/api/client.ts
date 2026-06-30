@@ -29,6 +29,8 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const API_PREFIX = "/api/v1";
+const REFRESH_REQUEST_HEADER = "X-STOKIO-Refresh";
+const REFRESH_REQUEST_HEADER_VALUE = "1";
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -98,6 +100,7 @@ export function createApiClient(token: string | null) {
 
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
+      credentials: options.credentials ?? "same-origin",
       headers
     });
 
@@ -157,10 +160,33 @@ export function createApiClient(token: string | null) {
       password: string;
       taxNumber?: string | null;
       phone?: string | null;
-    }) => request<AuthResponse>(`${API_PREFIX}/auth/register-tenant`, { method: "POST", body: JSON.stringify(body) }),
+    }) =>
+      request<AuthResponse>(`${API_PREFIX}/auth/register-tenant`, {
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify(body)
+      }),
 
     login: (body: { tenantSlug: string; email: string; password: string }) =>
-      request<AuthResponse>(`${API_PREFIX}/auth/login`, { method: "POST", body: JSON.stringify(body) }),
+      request<AuthResponse>(`${API_PREFIX}/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify(body)
+      }),
+
+    refreshSession: () =>
+      request<AuthResponse>(`${API_PREFIX}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { [REFRESH_REQUEST_HEADER]: REFRESH_REQUEST_HEADER_VALUE }
+      }),
+
+    logout: () =>
+      request<void>(`${API_PREFIX}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { [REFRESH_REQUEST_HEADER]: REFRESH_REQUEST_HEADER_VALUE }
+      }),
 
     getDashboardSummary: () => request<DashboardSummary>(`${API_PREFIX}/dashboard/summary`),
 

@@ -12,7 +12,6 @@ public sealed class ExportJobService(
     StokioDbContext dbContext,
     ICurrentTenant currentTenant,
     ICurrentUser currentUser,
-    IExportJobQueue exportJobQueue,
     ExportJobFileStore fileStore,
     IClock clock) : IExportJobService
 {
@@ -39,7 +38,6 @@ public sealed class ExportJobService(
 
         dbContext.ExportJobs.Add(job);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await exportJobQueue.EnqueueAsync(job.Id, cancellationToken);
 
         return ToDto(job);
     }
@@ -147,6 +145,8 @@ public sealed class ExportJobService(
             job.CreatedAt,
             job.CompletedAt,
             job.ExpiresAt,
+            job.NextAttemptAt,
+            job.FailedReasonCode,
             job.ErrorMessage);
     }
 

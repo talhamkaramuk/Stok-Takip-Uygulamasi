@@ -4,7 +4,8 @@ namespace STOKIO.Application.Abstractions;
 
 public interface IAuthService
 {
-    Task<AuthResponse> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken cancellationToken);
-    Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken);
+    Task<AuthSession> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken cancellationToken);
+    Task<AuthSession> LoginAsync(LoginRequest request, CancellationToken cancellationToken);
+    Task<AuthSession> RefreshAsync(string? refreshToken, CancellationToken cancellationToken);
+    Task LogoutAsync(string? refreshToken, CancellationToken cancellationToken);
 }
-

@@ -13,6 +13,7 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<ApplicationUser> ApplicationUsers => Set<ApplicationUser>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -67,6 +68,18 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
             entity.Property(x => x.PasswordHash).HasMaxLength(300).IsRequired();
             entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(32).IsRequired();
             entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.RevokedAt, x.ExpiresAt });
+            entity.HasIndex(x => new { x.TenantId, x.UserId });
+            entity.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.ReplacedByTokenHash).HasMaxLength(64);
+            entity.Property(x => x.RevocationReason).HasMaxLength(80);
+            entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Category>(entity =>
@@ -352,6 +365,8 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
             entity.HasQueryFilter(x => x.TenantId == TenantFilterId);
             entity.HasIndex(x => new { x.TenantId, x.Status });
             entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.HasIndex(x => new { x.Status, x.LockedUntil, x.CreatedAt });
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAt, x.CreatedAt });
             entity.HasIndex(x => x.ExpiresAt);
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(40).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
@@ -359,6 +374,10 @@ public sealed class StokioDbContext(DbContextOptions<StokioDbContext> options, I
             entity.Property(x => x.ContentType).HasMaxLength(120).IsRequired();
             entity.Property(x => x.StorageKey).HasMaxLength(300);
             entity.Property(x => x.ErrorMessage).HasMaxLength(500);
+            entity.Property(x => x.FailedReasonCode).HasMaxLength(80);
+            entity.Property(x => x.LockedBy).HasMaxLength(128);
+            entity.Property(x => x.RetryCount).HasDefaultValue(0);
+            entity.Property(x => x.MaxRetryCount).HasDefaultValue(3);
             entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.Count).WithMany().HasForeignKey(x => x.CountId).OnDelete(DeleteBehavior.SetNull);

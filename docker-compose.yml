@@ -30,8 +30,15 @@ services:
       Jwt__Audience: STOKIO.Web
       Jwt__SigningKey: ${STOKIO_JWT_SIGNING_KEY:-development-only-change-this-32-byte-minimum-key}
       Jwt__AccessTokenMinutes: ${STOKIO_ACCESS_TOKEN_MINUTES:-15}
+      Auth__RefreshTokenDays: ${STOKIO_REFRESH_TOKEN_DAYS:-14}
       Cors__AllowedOrigins__0: http://localhost:5173
       Exports__StoragePath: ${STOKIO_EXPORTS_STORAGE_PATH:-/var/lib/stokio/export-files}
+      Exports__JobLockTimeoutSeconds: ${STOKIO_EXPORT_JOB_LOCK_TIMEOUT_SECONDS:-900}
+      Exports__WorkerIdleDelayMilliseconds: ${STOKIO_EXPORT_WORKER_IDLE_DELAY_MILLISECONDS:-2000}
+      Exports__RetryBackoffBaseSeconds: ${STOKIO_EXPORT_RETRY_BACKOFF_BASE_SECONDS:-30}
+      Exports__RetryBackoffMaxSeconds: ${STOKIO_EXPORT_RETRY_BACKOFF_MAX_SECONDS:-900}
+      Exports__CleanupIntervalMinutes: ${STOKIO_EXPORT_CLEANUP_INTERVAL_MINUTES:-30}
+      Exports__CompletedRetentionDays: ${STOKIO_EXPORT_COMPLETED_RETENTION_DAYS:-7}
     ports:
       - "8080:8080"
     read_only: true

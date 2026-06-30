@@ -71,6 +71,11 @@ public sealed class WarehouseStockLedger(StokioDbContext dbContext, ICurrentTena
 
     public async Task<WarehouseStock> GetOrCreateStockAsync(Product product, Guid? warehouseId, CancellationToken cancellationToken)
     {
+        if (UsesPostgresRowLocks)
+        {
+            return await GetOrCreatePostgresStockAsync(product, warehouseId, cancellationToken);
+        }
+
         await SeedProductIfMissingAsync(product, cancellationToken);
         var warehouse = await ResolveWarehouseAsync(warehouseId, cancellationToken);
 
@@ -208,6 +213,14 @@ public sealed class WarehouseStockLedger(StokioDbContext dbContext, ICurrentTena
         }
 
         var warehouse = await GetDefaultWarehouseAsync(cancellationToken);
+
+        if (UsesPostgresRowLocks)
+        {
+            await EnsureSavedPrincipalRowsAsync(product, warehouse, cancellationToken);
+            await EnsurePostgresStockRowAsync(product, warehouse, product.CurrentStock, cancellationToken);
+            return;
+        }
+
         dbContext.WarehouseStocks.Add(new WarehouseStock
         {
             TenantId = currentTenant.TenantId,
@@ -217,6 +230,75 @@ public sealed class WarehouseStockLedger(StokioDbContext dbContext, ICurrentTena
             Warehouse = warehouse,
             Quantity = product.CurrentStock
         });
+    }
+
+    private async Task<WarehouseStock> GetOrCreatePostgresStockAsync(
+        Product product,
+        Guid? warehouseId,
+        CancellationToken cancellationToken)
+    {
+        EnsureTenant();
+        var warehouse = await ResolveWarehouseAsync(warehouseId, cancellationToken);
+        await EnsureSavedPrincipalRowsAsync(product, warehouse, cancellationToken);
+
+        var localStock = dbContext.WarehouseStocks.Local.FirstOrDefault(
+            x => x.ProductId == product.Id && x.WarehouseId == warehouse.Id);
+        if (localStock is not null)
+        {
+            return localStock;
+        }
+
+        var hasAnyStock = await dbContext.WarehouseStocks.AnyAsync(x => x.ProductId == product.Id, cancellationToken);
+        if (!hasAnyStock)
+        {
+            var defaultWarehouse = warehouse.IsDefault
+                ? warehouse
+                : await GetDefaultWarehouseAsync(cancellationToken);
+            await EnsureSavedPrincipalRowsAsync(product, defaultWarehouse, cancellationToken);
+            await EnsurePostgresStockRowAsync(product, defaultWarehouse, product.CurrentStock, cancellationToken);
+        }
+
+        await EnsurePostgresStockRowAsync(product, warehouse, 0, cancellationToken);
+        var stock = await dbContext.WarehouseStocks
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "WarehouseStocks"
+                WHERE "TenantId" = {currentTenant.TenantId}
+                  AND "WarehouseId" = {warehouse.Id}
+                  AND "ProductId" = {product.Id}
+                """)
+            .IgnoreQueryFilters()
+            .SingleAsync(cancellationToken);
+
+        stock.Product = product;
+        stock.Warehouse = warehouse;
+        return stock;
+    }
+
+    private async Task EnsurePostgresStockRowAsync(
+        Product product,
+        Warehouse warehouse,
+        int initialQuantity,
+        CancellationToken cancellationToken)
+    {
+        await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WarehouseStocks" ("Id", "CreatedAt", "UpdatedAt", "TenantId", "WarehouseId", "ProductId", "Quantity", "Version")
+            VALUES ({Guid.CreateVersion7()}, {DateTimeOffset.UtcNow}, NULL, {currentTenant.TenantId}, {warehouse.Id}, {product.Id}, {initialQuantity}, 1)
+            ON CONFLICT ("TenantId", "WarehouseId", "ProductId") DO NOTHING
+            """, cancellationToken);
+    }
+
+    private async Task EnsureSavedPrincipalRowsAsync(
+        Product product,
+        Warehouse warehouse,
+        CancellationToken cancellationToken)
+    {
+        var productEntry = dbContext.Entry(product);
+        var warehouseEntry = dbContext.Entry(warehouse);
+        if (productEntry.State == EntityState.Added || warehouseEntry.State == EntityState.Added)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private void EnsureTenant()

@@ -104,7 +104,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -425,6 +426,26 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         ALTER TABLE "IdempotencyRecords" ADD COLUMN IF NOT EXISTS "ExpiresAt" timestamp with time zone NOT NULL DEFAULT (now() + interval '24 hours');
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_IdempotencyRecords_TenantId_OperationName_Key" ON "IdempotencyRecords" ("TenantId", "OperationName", "Key");
 
+        CREATE TABLE IF NOT EXISTS "RefreshTokens" (
+            "Id" uuid NOT NULL,
+            "CreatedAt" timestamp with time zone NOT NULL,
+            "UpdatedAt" timestamp with time zone NULL,
+            "TenantId" uuid NOT NULL,
+            "UserId" uuid NOT NULL,
+            "TokenHash" character varying(64) NOT NULL,
+            "ExpiresAt" timestamp with time zone NOT NULL,
+            "RevokedAt" timestamp with time zone NULL,
+            "ReplacedByTokenHash" character varying(64) NULL,
+            "RevocationReason" character varying(80) NULL,
+            CONSTRAINT "PK_RefreshTokens" PRIMARY KEY ("Id"),
+            CONSTRAINT "FK_RefreshTokens_Tenants_TenantId" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("Id") ON DELETE RESTRICT,
+            CONSTRAINT "FK_RefreshTokens_ApplicationUsers_UserId" FOREIGN KEY ("UserId") REFERENCES "ApplicationUsers" ("Id") ON DELETE CASCADE
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_RefreshTokens_TokenHash" ON "RefreshTokens" ("TokenHash");
+        CREATE INDEX IF NOT EXISTS "IX_RefreshTokens_TenantId_UserId" ON "RefreshTokens" ("TenantId", "UserId");
+        CREATE INDEX IF NOT EXISTS "IX_RefreshTokens_UserId_RevokedAt_ExpiresAt" ON "RefreshTokens" ("UserId", "RevokedAt", "ExpiresAt");
+
         CREATE TABLE IF NOT EXISTS "ExportJobs" (
             "Id" uuid NOT NULL,
             "CreatedAt" timestamp with time zone NOT NULL,
@@ -440,6 +461,11 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "ContentType" character varying(120) NOT NULL,
             "StorageKey" character varying(300) NULL,
             "ErrorMessage" character varying(500) NULL,
+            "LockedBy" character varying(128) NULL,
+            "LockedUntil" timestamp with time zone NULL,
+            "RetryCount" integer NOT NULL DEFAULT 0,
+            "MaxRetryCount" integer NOT NULL DEFAULT 3,
+            "LastAttemptAt" timestamp with time zone NULL,
             "CompletedAt" timestamp with time zone NULL,
             "ExpiresAt" timestamp with time zone NOT NULL,
             CONSTRAINT "PK_ExportJobs" PRIMARY KEY ("Id"),
@@ -453,6 +479,13 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         CREATE INDEX IF NOT EXISTS "IX_ExportJobs_RequestedByUserId" ON "ExportJobs" ("RequestedByUserId");
         CREATE INDEX IF NOT EXISTS "IX_ExportJobs_TenantId_CreatedAt" ON "ExportJobs" ("TenantId", "CreatedAt");
         CREATE INDEX IF NOT EXISTS "IX_ExportJobs_TenantId_Status" ON "ExportJobs" ("TenantId", "Status");
+
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "LockedBy" character varying(128);
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "LockedUntil" timestamp with time zone;
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "RetryCount" integer NOT NULL DEFAULT 0;
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "MaxRetryCount" integer NOT NULL DEFAULT 3;
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "LastAttemptAt" timestamp with time zone;
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_Status_LockedUntil_CreatedAt" ON "ExportJobs" ("Status", "LockedUntil", "CreatedAt");
 
         CREATE TABLE IF NOT EXISTS "Customers" (
             "Id" uuid NOT NULL,

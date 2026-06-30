@@ -4,6 +4,12 @@
 
 API JWT Bearer authentication kullanır. Token içinde kullanıcı, rol, tenant id ve tenant slug claim'leri bulunur.
 
+Access token kısa ömürlüdür ve frontend tarafından kalıcı tarayıcı storage alanına yazılmaz. React uygulaması access token'ı yalnızca memory state içinde tutar; sayfa yenileme veya token süresi yaklaşınca `/api/v1/auth/refresh` çağrısı ile yeni access token alır.
+
+Refresh token sadece API tarafından yazılan HttpOnly cookie içinde tutulur. Cookie production ortamında `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api` ve süreli `Expires` ayarlarıyla döner. Refresh token veritabanında düz metin saklanmaz; SHA-256 hash olarak tutulur. Her başarılı refresh eski token'ı `rotated` olarak revoke eder ve yeni refresh token üretir. Logout mevcut refresh token'ı `logout` sebebiyle revoke eder.
+
+Refresh ve logout endpointleri cookie tabanlı olduğu için CSRF'e karşı `X-STOKIO-Refresh: 1` özel header'ını zorunlu tutar. Browser form post'ları bu header'ı üretemez; CORS credentials sadece allowlist'teki frontend origin'lerine açıktır. Frontend CSP policy `default-src 'self'`, `script-src 'self'`, `object-src 'none'` ve sınırlı `connect-src` ile XSS etki alanını daraltır.
+
 Rol politikaları:
 
 - `Owner`
@@ -57,3 +63,4 @@ Excel export endpointleri kimlik doğrulama gerektirir ve veriyi servis katmanı
 - API sadece HTTPS üzerinden yayınlanmalıdır.
 - CORS allowlist gerçek frontend origin değerleriyle sınırlandırılmalıdır.
 - Development dışındaki ortamlarda wildcard CORS ve varsayılan geliştirme JWT anahtarı startup sırasında engellenir.
+- Refresh token süresi `Auth:RefreshTokenDays` ile yönetilir ve production secret/config kaynağından ortam bazlı verilmelidir.
