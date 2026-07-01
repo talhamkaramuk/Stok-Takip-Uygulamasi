@@ -161,8 +161,10 @@ export function ShipmentsView({
         </form>
       </section>
 
-      <div className="content-grid">
-        <section className="tool-panel compact-filter-panel">
+      <OperationTable
+        title="Sevkiyatlar"
+        icon={<Truck size={19} />}
+        actions={
           <div className="table-filter-row">
             <label className="search-field">
               <Search size={16} />
@@ -174,29 +176,25 @@ export function ShipmentsView({
               <option value="Cancelled">İptal</option>
             </select>
           </div>
-        </section>
-        <OperationTable
-          title="Sevkiyatlar"
-          icon={<Truck size={19} />}
-          rows={shipmentPage.items.map((shipment) => ({
-            id: shipment.id,
-            number: shipment.shipmentNumber,
-            party: shipment.recipientName,
-            warehouse: shipment.warehouseName || "-",
-            status: shipment.status,
-            quantity: shipment.totalQuantity,
-            date: shipment.shippedAt
-          }))}
-          pagination={{
-            page: shipmentPage.page,
-            totalPages: shipmentPage.totalPages,
-            totalCount: shipmentPage.totalCount,
-            startIndex: shipmentPage.startIndex,
-            endIndex: shipmentPage.endIndex,
-            onPageChange: shipmentPage.setPage
-          }}
-        />
-      </div>
+        }
+        rows={shipmentPage.items.map((shipment) => ({
+          id: shipment.id,
+          number: shipment.shipmentNumber,
+          party: shipment.recipientName,
+          warehouse: shipment.warehouseName || "-",
+          status: shipment.status,
+          quantity: shipment.totalQuantity,
+          date: shipment.shippedAt
+        }))}
+        pagination={{
+          page: shipmentPage.page,
+          totalPages: shipmentPage.totalPages,
+          totalCount: shipmentPage.totalCount,
+          startIndex: shipmentPage.startIndex,
+          endIndex: shipmentPage.endIndex,
+          onPageChange: shipmentPage.setPage
+        }}
+      />
     </div>
   );
 }

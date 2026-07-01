@@ -15,11 +15,13 @@ export type TablePagination = {
 export function OperationTable({
   title,
   icon,
+  actions,
   rows,
   pagination
 }: {
   title: string;
   icon: ReactNode;
+  actions?: ReactNode;
   rows: Array<{ id: string; number: string; party: string; warehouse: string; status: string; quantity: number; date: string }>;
   pagination?: TablePagination;
 }) {
@@ -36,9 +38,21 @@ export function OperationTable({
 
   return (
     <section className="tool-panel">
-      <div className="section-title">
-        {icon}
-        <h2>{title}</h2>
+      <div className={actions ? "section-title spread" : "section-title"}>
+        {actions ? (
+          <>
+            <span>
+              {icon}
+              <h2>{title}</h2>
+            </span>
+            {actions}
+          </>
+        ) : (
+          <>
+            {icon}
+            <h2>{title}</h2>
+          </>
+        )}
       </div>
       <div className="table-wrap">
         <table>

@@ -1248,27 +1248,27 @@ select:focus {
 .section-title.spread {
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .section-title.spread span {
   gap: 9px;
-}
-
-.compact-filter-panel {
-  padding-top: 12px;
-  padding-bottom: 12px;
+  min-width: 0;
 }
 
 .table-filter-row {
+  flex: 1 1 420px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-width: min(100%, 420px);
+  min-width: 0;
 }
 
 .table-filter-row .search-field {
-  flex: 1 1 220px;
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: 360px;
 }
 
 .table-filter-row select {
@@ -1289,6 +1289,7 @@ select:focus {
 }
 
 .search-field input {
+  min-width: 0;
   min-height: 38px;
   border: 0;
   padding-inline: 0;
@@ -1713,6 +1714,7 @@ tbody tr:last-child td {
   }
 
   .table-filter-row {
+    flex: 0 1 auto;
     width: 100%;
     min-width: 0;
     flex-wrap: wrap;
@@ -1722,6 +1724,10 @@ tbody tr:last-child td {
   .table-filter-row select {
     width: 100%;
     min-width: 0;
+  }
+
+  .table-filter-row .search-field {
+    max-width: none;
   }
 
   .search-field {

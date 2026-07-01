@@ -130,8 +130,10 @@ export function OrdersView({
         </form>
       </section>
 
-      <div className="content-grid">
-        <section className="tool-panel compact-filter-panel">
+      <OperationTable
+        title="Siparişler"
+        icon={<ClipboardCheck size={19} />}
+        actions={
           <div className="table-filter-row">
             <label className="search-field">
               <Search size={16} />
@@ -145,29 +147,25 @@ export function OrdersView({
               <option value="Cancelled">İptal</option>
             </select>
           </div>
-        </section>
-        <OperationTable
-          title="Siparişler"
-          icon={<ClipboardCheck size={19} />}
-          rows={orderPage.items.map((order) => ({
-            id: order.id,
-            number: order.orderNumber,
-            party: order.customerName,
-            warehouse: order.warehouseName || "-",
-            status: order.status,
-            quantity: order.totalQuantity,
-            date: order.createdAt
-          }))}
-          pagination={{
-            page: orderPage.page,
-            totalPages: orderPage.totalPages,
-            totalCount: orderPage.totalCount,
-            startIndex: orderPage.startIndex,
-            endIndex: orderPage.endIndex,
-            onPageChange: orderPage.setPage
-          }}
-        />
-      </div>
+        }
+        rows={orderPage.items.map((order) => ({
+          id: order.id,
+          number: order.orderNumber,
+          party: order.customerName,
+          warehouse: order.warehouseName || "-",
+          status: order.status,
+          quantity: order.totalQuantity,
+          date: order.createdAt
+        }))}
+        pagination={{
+          page: orderPage.page,
+          totalPages: orderPage.totalPages,
+          totalCount: orderPage.totalCount,
+          startIndex: orderPage.startIndex,
+          endIndex: orderPage.endIndex,
+          onPageChange: orderPage.setPage
+        }}
+      />
     </div>
   );
 }

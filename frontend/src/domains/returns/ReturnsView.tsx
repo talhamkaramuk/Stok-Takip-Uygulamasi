@@ -160,8 +160,10 @@ export function ReturnsView({
         </form>
       </section>
 
-      <div className="content-grid">
-        <section className="tool-panel compact-filter-panel">
+      <OperationTable
+        title="İadeler"
+        icon={<RotateCcw size={19} />}
+        actions={
           <div className="table-filter-row">
             <label className="search-field">
               <Search size={16} />
@@ -173,29 +175,25 @@ export function ReturnsView({
               <option value="Rejected">Reddedildi</option>
             </select>
           </div>
-        </section>
-        <OperationTable
-          title="İadeler"
-          icon={<RotateCcw size={19} />}
-          rows={returnPage.items.map((item) => ({
-            id: item.id,
-            number: item.returnNumber,
-            party: item.customerName,
-            warehouse: item.warehouseName || "-",
-            status: item.status,
-            quantity: item.totalQuantity,
-            date: item.receivedAt
-          }))}
-          pagination={{
-            page: returnPage.page,
-            totalPages: returnPage.totalPages,
-            totalCount: returnPage.totalCount,
-            startIndex: returnPage.startIndex,
-            endIndex: returnPage.endIndex,
-            onPageChange: returnPage.setPage
-          }}
-        />
-      </div>
+        }
+        rows={returnPage.items.map((item) => ({
+          id: item.id,
+          number: item.returnNumber,
+          party: item.customerName,
+          warehouse: item.warehouseName || "-",
+          status: item.status,
+          quantity: item.totalQuantity,
+          date: item.receivedAt
+        }))}
+        pagination={{
+          page: returnPage.page,
+          totalPages: returnPage.totalPages,
+          totalCount: returnPage.totalCount,
+          startIndex: returnPage.startIndex,
+          endIndex: returnPage.endIndex,
+          onPageChange: returnPage.setPage
+        }}
+      />
     </div>
   );
 }
