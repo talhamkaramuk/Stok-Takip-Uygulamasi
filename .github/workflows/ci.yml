@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
 
 jobs:
   backend:
@@ -39,8 +42,17 @@ jobs:
       - name: Unit and service tests
         run: dotnet test STOKIO.sln --no-restore
 
+      - name: Migration destructive change check
+        shell: pwsh
+        run: ./scripts/Test-MigrationSafety.ps1
+
       - name: PostgreSQL relational integration tests
         run: dotnet test STOKIO.sln --no-restore --filter "Layer=RelationalIntegration"
+        env:
+          STOKIO_TEST_POSTGRES_CONNECTION_STRING: Host=localhost;Port=5432;Database=stokio_test;Username=stokio;Password=stokio_dev_password
+
+      - name: PostgreSQL migration apply tests
+        run: dotnet test STOKIO.sln --no-restore --filter "Layer=Migration"
         env:
           STOKIO_TEST_POSTGRES_CONNECTION_STRING: Host=localhost;Port=5432;Database=stokio_test;Username=stokio;Password=stokio_dev_password
 
@@ -85,3 +97,126 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+      - name: Create smoke network
+        run: docker network create stokio-ci-smoke
+
+      - name: Start smoke PostgreSQL
+        run: >-
+          docker run -d --name stokio-ci-postgres --network stokio-ci-smoke
+          -e POSTGRES_DB=stokio
+          -e POSTGRES_USER=stokio
+          -e POSTGRES_PASSWORD=stokio_dev_password
+          postgres:16-alpine
+
+      - name: Wait for smoke PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if docker exec stokio-ci-postgres pg_isready -U stokio -d stokio; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs stokio-ci-postgres
+          exit 1
+
+      - name: Start API container
+        run: >-
+          docker run -d --name stokio-ci-api --network stokio-ci-smoke -p 18080:8080
+          -e ASPNETCORE_ENVIRONMENT=Development
+          -e 'ConnectionStrings__DefaultConnection=Host=stokio-ci-postgres;Port=5432;Database=stokio;Username=stokio;Password=stokio_dev_password'
+          -e Database__EnsureCreated=true
+          -e Database__ApplyDevelopmentSchemaPatches=true
+          -e Database__SeedDevelopmentData=false
+          -e Jwt__SigningKey=ci-container-smoke-signing-key-32-bytes-minimum
+          stokio-api:ci
+
+      - name: Smoke /health/ready
+        run: |
+          for i in {1..45}; do
+            if curl -fsS http://localhost:18080/health/ready; then
+              exit 0
+            fi
+            docker logs --tail 80 stokio-ci-api || true
+            sleep 2
+          done
+          docker logs stokio-ci-api
+          exit 1
+
+      - name: Cleanup smoke containers
+        if: always()
+        run: |
+          docker rm -f stokio-ci-api stokio-ci-postgres || true
+          docker network rm stokio-ci-smoke || true
+
+  e2e:
+    name: E2E smoke
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, docker]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore STOKIO.sln
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Start PostgreSQL
+        run: docker compose up -d postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if docker compose exec -T postgres pg_isready -U stokio -d stokio; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs postgres
+          exit 1
+
+      - name: Apply migrations
+        run: dotnet ef database update --project src/STOKIO.Infrastructure/STOKIO.Infrastructure.csproj --startup-project src/STOKIO.Api/STOKIO.Api.csproj
+        env:
+          STOKIO_CONNECTION_STRING: Host=localhost;Port=5432;Database=stokio;Username=stokio;Password=stokio_dev_password
+
+      - name: Start API
+        run: docker compose up -d --build api
+        env:
+          STOKIO_ENSURE_CREATED: "false"
+          STOKIO_APPLY_DEVELOPMENT_SCHEMA_PATCHES: "false"
+          STOKIO_SEED_DEVELOPMENT_DATA: "false"
+          STOKIO_JWT_SIGNING_KEY: ci-e2e-smoke-signing-key-32-bytes-minimum
+
+      - name: Wait for API readiness
+        run: |
+          for i in {1..45}; do
+            if curl -fsS http://localhost:8080/health/ready; then
+              exit 0
+            fi
+            docker compose logs --tail 80 api || true
+            sleep 2
+          done
+          docker compose logs api
+          exit 1
+
+      - name: Run E2E smoke tests
+        run: dotnet test STOKIO.sln --no-restore --filter "Layer=E2ESmoke"
+        env:
+          STOKIO_E2E_BASE_URL: http://localhost:8080
+
+      - name: Print compose logs on failure
+        if: failure()
+        run: docker compose logs api postgres
+
+      - name: Cleanup compose stack
+        if: always()
+        run: docker compose down -v
