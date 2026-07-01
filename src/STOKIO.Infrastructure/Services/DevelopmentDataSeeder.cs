@@ -12,6 +12,26 @@ public static class DevelopmentDataSeeder
     public static async Task SeedAsync(StokioDbContext dbContext, IPasswordHasher passwordHasher, CancellationToken cancellationToken = default)
     {
         const string tenantSlug = "stokio-demo";
+
+        if (dbContext.Database.IsRelational())
+        {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await ResetAndSeedAsync(dbContext, passwordHasher, tenantSlug, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        await ResetAndSeedAsync(dbContext, passwordHasher, tenantSlug, cancellationToken);
+    }
+
+    private static async Task ResetAndSeedAsync(
+        StokioDbContext dbContext,
+        IPasswordHasher passwordHasher,
+        string tenantSlug,
+        CancellationToken cancellationToken)
+    {
+        await DeleteExistingTenantAsync(dbContext, tenantSlug, cancellationToken);
+
         var tenant = await dbContext.Tenants.SingleOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
         if (tenant is null)
         {
@@ -49,6 +69,87 @@ public static class DevelopmentDataSeeder
         var suppliers = await EnsureSuppliersAsync(dbContext, tenant.Id, cancellationToken);
         var products = await EnsureProductsAsync(dbContext, tenant.Id, categories, warehouses, cancellationToken);
         await EnsureOperationsAsync(dbContext, tenant.Id, products, warehouses, customers, suppliers, cancellationToken);
+    }
+
+    private static async Task DeleteExistingTenantAsync(StokioDbContext dbContext, string tenantSlug, CancellationToken cancellationToken)
+    {
+        var existingTenantId = await dbContext.Tenants
+            .Where(x => x.Slug == tenantSlug)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (existingTenantId is not Guid tenantId)
+        {
+            return;
+        }
+
+        await DeleteTenantRowsAsync(dbContext, dbContext.ReturnRequestItems, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.ShipmentItems, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.SalesOrderItems, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.PurchaseRequestItems, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.InventoryCountItems, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.ReturnRequests, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.Shipments, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.SalesOrders, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.PurchaseRequests, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.ExportJobs, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.InventoryCounts, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.StockMovements, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.WarehouseStocks, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.ProductBarcodes, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.Products, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.Categories, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.Customers, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.Suppliers, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.Warehouses, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.AuditLogs, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.IdempotencyRecords, tenantId, cancellationToken);
+        await DeleteRefreshTokensAsync(dbContext, tenantId, cancellationToken);
+        await DeleteTenantRowsAsync(dbContext, dbContext.ApplicationUsers, tenantId, cancellationToken);
+        await DeleteTenantAsync(dbContext, tenantId, cancellationToken);
+    }
+
+    private static async Task DeleteTenantRowsAsync<TEntity>(
+        StokioDbContext dbContext,
+        DbSet<TEntity> dbSet,
+        Guid tenantId,
+        CancellationToken cancellationToken)
+        where TEntity : class, ITenantScoped
+    {
+        var query = dbSet.IgnoreQueryFilters().Where(x => x.TenantId == tenantId);
+        if (dbContext.Database.IsRelational())
+        {
+            await query.ExecuteDeleteAsync(cancellationToken);
+            return;
+        }
+
+        dbSet.RemoveRange(await query.ToListAsync(cancellationToken));
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task DeleteRefreshTokensAsync(StokioDbContext dbContext, Guid tenantId, CancellationToken cancellationToken)
+    {
+        var query = dbContext.RefreshTokens.Where(x => x.TenantId == tenantId);
+        if (dbContext.Database.IsRelational())
+        {
+            await query.ExecuteDeleteAsync(cancellationToken);
+            return;
+        }
+
+        dbContext.RefreshTokens.RemoveRange(await query.ToListAsync(cancellationToken));
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task DeleteTenantAsync(StokioDbContext dbContext, Guid tenantId, CancellationToken cancellationToken)
+    {
+        var query = dbContext.Tenants.Where(x => x.Id == tenantId);
+        if (dbContext.Database.IsRelational())
+        {
+            await query.ExecuteDeleteAsync(cancellationToken);
+            return;
+        }
+
+        dbContext.Tenants.RemoveRange(await query.ToListAsync(cancellationToken));
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task<Dictionary<string, Warehouse>> EnsureWarehousesAsync(StokioDbContext dbContext, Guid tenantId, CancellationToken cancellationToken)

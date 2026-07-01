@@ -497,11 +497,13 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
             "ContentType" character varying(120) NOT NULL,
             "StorageKey" character varying(300) NULL,
             "ErrorMessage" character varying(500) NULL,
+            "FailedReasonCode" character varying(80) NULL,
             "LockedBy" character varying(128) NULL,
             "LockedUntil" timestamp with time zone NULL,
             "RetryCount" integer NOT NULL DEFAULT 0,
             "MaxRetryCount" integer NOT NULL DEFAULT 3,
             "LastAttemptAt" timestamp with time zone NULL,
+            "NextAttemptAt" timestamp with time zone NULL,
             "CompletedAt" timestamp with time zone NULL,
             "ExpiresAt" timestamp with time zone NOT NULL,
             CONSTRAINT "PK_ExportJobs" PRIMARY KEY ("Id"),
@@ -521,7 +523,10 @@ static async Task ApplyDevelopmentSchemaPatchesAsync(StokioDbContext dbContext)
         ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "RetryCount" integer NOT NULL DEFAULT 0;
         ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "MaxRetryCount" integer NOT NULL DEFAULT 3;
         ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "LastAttemptAt" timestamp with time zone;
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "NextAttemptAt" timestamp with time zone;
+        ALTER TABLE "ExportJobs" ADD COLUMN IF NOT EXISTS "FailedReasonCode" character varying(80);
         CREATE INDEX IF NOT EXISTS "IX_ExportJobs_Status_LockedUntil_CreatedAt" ON "ExportJobs" ("Status", "LockedUntil", "CreatedAt");
+        CREATE INDEX IF NOT EXISTS "IX_ExportJobs_Status_NextAttemptAt_CreatedAt" ON "ExportJobs" ("Status", "NextAttemptAt", "CreatedAt");
 
         CREATE TABLE IF NOT EXISTS "Customers" (
             "Id" uuid NOT NULL,
