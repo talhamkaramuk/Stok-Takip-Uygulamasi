@@ -25,4 +25,25 @@ public sealed record MetricsSnapshotDto(
     double AverageExportDurationMs,
     long DatabaseReadinessSuccessCount,
     long DatabaseReadinessFailureCount,
-    double AverageDatabaseReadinessMs);
+    double AverageDatabaseReadinessMs,
+    long LegacyApiRequestCount);
+
+public sealed record LegacyApiUsageReportDto(
+    DateTimeOffset GeneratedAtUtc,
+    DateTimeOffset SunsetAtUtc,
+    DateTimeOffset RemoveMappingsAfterUtc,
+    long TotalRequestCount,
+    IReadOnlyCollection<LegacyApiClientUsageDto> Clients);
+
+public sealed record LegacyApiClientUsageDto(
+    string Client,
+    long RequestCount,
+    DateTimeOffset FirstSeenAtUtc,
+    DateTimeOffset LastSeenAtUtc,
+    IReadOnlyCollection<LegacyApiRouteUsageDto> Routes);
+
+public sealed record LegacyApiRouteUsageDto(
+    string Method,
+    string Route,
+    long RequestCount,
+    DateTimeOffset LastSeenAtUtc);

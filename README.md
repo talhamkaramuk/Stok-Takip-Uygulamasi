@@ -147,8 +147,9 @@ dotnet ef database update --project src/STOKIO.Infrastructure/STOKIO.Infrastruct
 - PostgreSQL yedekleri günlük çalıştırılmalı ve düzenli restore testi yapılmalıdır.
 - CORS izinleri sadece gerçek frontend origin değerleriyle sınırlandırılmalıdır.
 - Liveness endpoint'i `/health`, readiness endpoint'i `/health/ready` adresindedir.
-- Production ortamında `Observability:Metrics:OtlpEndpoint` veya `OTEL_EXPORTER_OTLP_ENDPOINT` bir OpenTelemetry collector adresine ayarlanmalıdır. Uygulama request count/latency, 4xx/5xx count, login success/failure, stock movement count, export success/failure ve DB readiness latency metriklerini `STOKIO.Api` meter'i üzerinden OTLP ile dış sisteme aktarır.
+- Production ortamında `Observability:Metrics:OtlpEndpoint` veya `OTEL_EXPORTER_OTLP_ENDPOINT` bir OpenTelemetry collector adresine ayarlanmalıdır. Uygulama request count/latency, 4xx/5xx count, login success/failure, stock movement count, export success/failure, legacy `/api` usage ve DB readiness latency metriklerini `STOKIO.Api` meter'i üzerinden OTLP ile dış sisteme aktarır.
 - `/api/v1/observability/metrics` JSON snapshot endpoint'i yalnızca `Observability:Metrics:EnableDebugSnapshotEndpoint=true` olduğunda map edilir; production için kapalı tutulmalıdır.
+- `/api/v1/observability/legacy-api-usage` client/route bazlı legacy usage raporunu aynı debug snapshot ayarı açıkken üretir; 31 Aralık 2026 23:59:59 UTC sonrasında legacy `/api` mapping'leri startup'ta map edilmez.
 - Kritik stok yazma endpointlerinde tekrar denemeler için `Idempotency-Key` header'ı kullanılabilir.
 
 Ek ayrıntılar için:

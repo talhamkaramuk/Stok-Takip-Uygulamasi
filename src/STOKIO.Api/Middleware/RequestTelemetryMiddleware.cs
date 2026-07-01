@@ -1,5 +1,6 @@
 using Serilog.Context;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Routing;
 using STOKIO.Application.Abstractions;
 using STOKIO.Application.Common;
 
@@ -38,6 +39,15 @@ public sealed class RequestTelemetryMiddleware(RequestDelegate next, ILogger<Req
             {
                 var elapsedMs = System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 metricsRecorder.RecordRequest(statusCode, elapsedMs);
+                if (LegacyApiDeprecationMiddleware.IsLegacyApiRequest(context.Request.Path))
+                {
+                    metricsRecorder.RecordLegacyApiRequest(
+                        context.Request.Method,
+                        RouteForMetrics(context),
+                        ClientForReport(context.Request),
+                        DateTimeOffset.UtcNow);
+                }
+
                 logger.LogInformation(
                     "HTTP {Method} {Route} responded {StatusCode} in {ElapsedMs:0.0} ms.",
                     context.Request.Method,
@@ -58,5 +68,34 @@ public sealed class RequestTelemetryMiddleware(RequestDelegate next, ILogger<Req
             DbUpdateException => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status500InternalServerError
         };
+    }
+
+    private static string RouteForMetrics(HttpContext context)
+    {
+        if (context.GetEndpoint() is RouteEndpoint routeEndpoint
+            && !string.IsNullOrWhiteSpace(routeEndpoint.RoutePattern.RawText))
+        {
+            return routeEndpoint.RoutePattern.RawText;
+        }
+
+        return "unmatched_legacy_api";
+    }
+
+    private static string ClientForReport(HttpRequest request)
+    {
+        var explicitClient = request.Headers["X-STOKIO-Client"].ToString();
+        if (!string.IsNullOrWhiteSpace(explicitClient))
+        {
+            return explicitClient;
+        }
+
+        var clientId = request.Headers["X-Client-Id"].ToString();
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            return clientId;
+        }
+
+        var userAgent = request.Headers.UserAgent.ToString();
+        return string.IsNullOrWhiteSpace(userAgent) ? "unknown" : userAgent;
     }
 }

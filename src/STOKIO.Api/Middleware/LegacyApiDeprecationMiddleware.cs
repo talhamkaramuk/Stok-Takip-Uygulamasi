@@ -10,6 +10,8 @@ public sealed class LegacyApiDeprecationMiddleware(RequestDelegate next)
     public const string SunsetHeaderValue = "Thu, 31 Dec 2026 23:59:59 GMT";
     public const string LinkHeaderName = "Link";
     public const string LinkHeaderValue = "</api/v1>; rel=\"successor-version\"";
+    public static readonly DateTimeOffset SunsetAtUtc = new(2026, 12, 31, 23, 59, 59, TimeSpan.Zero);
+    public static readonly DateTimeOffset RemoveMappingsAfterUtc = SunsetAtUtc;
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -27,5 +29,10 @@ public sealed class LegacyApiDeprecationMiddleware(RequestDelegate next)
     {
         return path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
             && !path.StartsWithSegments("/api/v1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool ShouldMapLegacyRoutes(DateTimeOffset nowUtc)
+    {
+        return nowUtc <= RemoveMappingsAfterUtc;
     }
 }

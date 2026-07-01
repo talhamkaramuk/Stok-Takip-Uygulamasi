@@ -36,6 +36,11 @@ public static class ObservabilityEndpoints
             {
                 return Results.Ok(metricsRecorder.Snapshot());
             });
+
+            group.MapGet("/legacy-api-usage", (IMetricsRecorder metricsRecorder) =>
+            {
+                return Results.Ok(metricsRecorder.LegacyApiUsageReport(DateTimeOffset.UtcNow));
+            });
         }
 
         return app;

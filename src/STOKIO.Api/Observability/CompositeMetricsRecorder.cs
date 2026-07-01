@@ -14,6 +14,12 @@ public sealed class CompositeMetricsRecorder(
         inMemoryRecorder.RecordRequest(statusCode, elapsedMs);
     }
 
+    public void RecordLegacyApiRequest(string method, string route, string client, DateTimeOffset observedAtUtc)
+    {
+        openTelemetryRecorder.RecordLegacyApiRequest(method, route, client, observedAtUtc);
+        inMemoryRecorder.RecordLegacyApiRequest(method, route, client, observedAtUtc);
+    }
+
     public void RecordLogin(bool succeeded)
     {
         openTelemetryRecorder.RecordLogin(succeeded);
@@ -41,5 +47,10 @@ public sealed class CompositeMetricsRecorder(
     public MetricsSnapshotDto Snapshot()
     {
         return inMemoryRecorder.Snapshot();
+    }
+
+    public LegacyApiUsageReportDto LegacyApiUsageReport(DateTimeOffset generatedAtUtc)
+    {
+        return inMemoryRecorder.LegacyApiUsageReport(generatedAtUtc);
     }
 }

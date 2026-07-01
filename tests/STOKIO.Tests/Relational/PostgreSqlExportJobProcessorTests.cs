@@ -389,6 +389,10 @@ public sealed class PostgreSqlExportJobProcessorTests(PostgreSqlDatabaseFixture 
         {
         }
 
+        public void RecordLegacyApiRequest(string method, string route, string client, DateTimeOffset observedAtUtc)
+        {
+        }
+
         public void RecordLogin(bool succeeded)
         {
         }
@@ -407,7 +411,12 @@ public sealed class PostgreSqlExportJobProcessorTests(PostgreSqlDatabaseFixture 
 
         public MetricsSnapshotDto Snapshot()
         {
-            return new MetricsSnapshotDto(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return new MetricsSnapshotDto(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
+        public LegacyApiUsageReportDto LegacyApiUsageReport(DateTimeOffset generatedAtUtc)
+        {
+            return new LegacyApiUsageReportDto(generatedAtUtc, generatedAtUtc, generatedAtUtc, 0, []);
         }
     }
 }

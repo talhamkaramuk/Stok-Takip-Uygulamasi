@@ -37,7 +37,7 @@ Mevcut durum:
 - `InitialCreate` EF Core migration dosyası oluşturuldu.
 - `dotnet-ef` local tool manifesti `.config/dotnet-tools.json` altında sabitlendi.
 - Development hızlı başlangıç akışı için schema patch korunur; üretimde kapalı kalır.
-- Legacy `/api` route'ları geçici olarak korunur ve `Deprecation`/`Sunset` header'ları döndürür. Yeni istemciler `/api/v1` kullanmalı; 31 Aralık 2026 sonrası release'te `/api` route'ları kaldırılmalıdır.
+- Legacy `/api` route'ları geçici olarak korunur ve `Deprecation`/`Sunset` header'ları döndürür. Yeni istemciler `/api/v1` kullanmalı; uygulama 31 Aralık 2026 23:59:59 UTC sonrasında legacy mapping'leri startup'ta map etmez.
 - Export job claim akisi `ExportJobs.LockedBy`, `LockedUntil`, `RetryCount`, `MaxRetryCount`, `LastAttemptAt` ve `NextAttemptAt` alanlariyla Postgres uzerinden yapilir. Stale `Processing` job'lar lock timeout sonrasinda farkli worker tarafindan reclaim edilebilir.
 - Basarisiz export job'lari exponential backoff ile yeniden denenir; terminal hatalarda `FailedReasonCode` yazilir. Worker expired dosyalari siler ve retention disindaki terminal job satirlarini kaldirir.
 - Access token frontend memory state içinde tutulur; refresh token düz metin saklanmaz, HttpOnly cookie üzerinden taşınır ve her refresh işleminde rotate edilir. Refresh/logout endpointleri `X-STOKIO-Refresh: 1` header'ını zorunlu tutar.
@@ -113,7 +113,7 @@ Eklenmesi gereken sinyaller:
 
 - Correlation id response header ve loglarda görünmelidir.
 - Readiness health check veritabanı bağlantısını kontrol etmelidir.
-- Metrikler: request count, latency, 4xx/5xx, login success/failure, tenant registration, stock movement count, failed stock out, export duration/failure, database latency/failure, tenant activity.
+- Metrikler: request count, latency, 4xx/5xx, login success/failure, tenant registration, stock movement count, failed stock out, export duration/failure, database latency/failure, tenant activity, legacy `/api` usage.
 - Kritik hata ve health failure için uyarı mekanizması kurulmalıdır.
 
 Mevcut durum:
@@ -121,9 +121,10 @@ Mevcut durum:
 - `/health` liveness endpoint'i vardır.
 - `/health/ready` veritabanı bağlantısını kontrol eden readiness endpoint'i olarak eklenmiştir.
 - `IMetricsRecorder` production ortamında process içi sayaç tutmaz; `STOKIO.Api` OpenTelemetry meter'i üzerinden OTLP exporter'a yazar.
-- Uygulama request count/latency, 4xx/5xx count, login success/failure, stock movement count, export success/failure ve DB readiness latency sinyallerini dış collector'a aktarır.
+- Uygulama request count/latency, 4xx/5xx count, login success/failure, stock movement count, export success/failure, legacy `/api` usage ve DB readiness latency sinyallerini dış collector'a aktarır.
 - Production ortamında `Observability:Metrics:OtlpEndpoint` veya `OTEL_EXPORTER_OTLP_ENDPOINT` zorunludur; eksikse uygulama fail-fast başlar.
 - `/api/v1/observability/metrics` JSON snapshot endpoint'i debug/development amaçlıdır ve sadece `Observability:Metrics:EnableDebugSnapshotEndpoint=true` iken map edilir.
+- `/api/v1/observability/legacy-api-usage` client/route bazlı legacy usage raporu üretir; sunset öncesi client migration takibi için aynı debug snapshot ayarıyla map edilir.
 
 ## P4 - Test ve Release Kalitesi
 

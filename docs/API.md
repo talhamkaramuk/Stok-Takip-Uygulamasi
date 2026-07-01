@@ -7,7 +7,9 @@ Varsayılan yerel API adresleri:
 
 API sözleşmesi `/api/v1` altındadır. Eski `/api` yolları geçiş uyumluluğu için açık tutulur.
 
-Legacy `/api` route'ları geçici uyumluluk yüzeyidir. Bu route'lar response header olarak `Deprecation: true`, `Sunset: Thu, 31 Dec 2026 23:59:59 GMT` ve `Link: </api/v1>; rel="successor-version"` döndürür. Yeni frontend ve yeni entegrasyonlar yalnızca `/api/v1` kullanmalıdır; sunset tarihinden sonraki release'te `/api` route'ları kaldırılacak şekilde planlanmıştır.
+Legacy `/api` route'ları geçici uyumluluk yüzeyidir. Bu route'lar response header olarak `Deprecation: true`, `Sunset: Thu, 31 Dec 2026 23:59:59 GMT` ve `Link: </api/v1>; rel="successor-version"` döndürür. Yeni frontend ve yeni entegrasyonlar yalnızca `/api/v1` kullanmalıdır; uygulama `31 Dec 2026 23:59:59 GMT` sonrasında legacy `/api` mapping'lerini startup sırasında map etmez.
+
+Legacy usage takibi için `stokio.legacy_api.requests` metriği yayınlanır. Debug snapshot endpoint'i açıkken tenant owner kullanıcılar `/api/v1/observability/legacy-api-usage` ile sunset öncesi client/route bazlı kullanım raporu alabilir.
 
 Kimlik gerektiren çağrılarda header:
 

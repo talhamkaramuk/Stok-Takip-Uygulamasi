@@ -31,6 +31,7 @@ public sealed class OpenTelemetryMetricsRecorderTests
 
         recorder.RecordRequest(StatusCodes.Status404NotFound, 12.5);
         recorder.RecordRequest(StatusCodes.Status503ServiceUnavailable, 25);
+        recorder.RecordLegacyApiRequest("GET", "/api/products", "mobile-app", DateTimeOffset.UtcNow);
         recorder.RecordLogin(succeeded: true);
         recorder.RecordLogin(succeeded: false);
         recorder.RecordStockMovement(StockMovementType.Out, quantity: 3, isCriticalAfterMovement: true);
@@ -45,6 +46,7 @@ public sealed class OpenTelemetryMetricsRecorderTests
         Assert.Contains("stokio.http.request.duration", names);
         Assert.Contains("stokio.http.client_errors", names);
         Assert.Contains("stokio.http.server_errors", names);
+        Assert.Contains("stokio.legacy_api.requests", names);
         Assert.Contains("stokio.auth.logins", names);
         Assert.Contains("stokio.stock.movements", names);
         Assert.Contains("stokio.stock.critical_movements", names);
@@ -56,6 +58,10 @@ public sealed class OpenTelemetryMetricsRecorderTests
             measurement.Name == "stokio.http.client_errors"
             && measurement.Tags.TryGetValue("http.response.status_class", out var statusClass)
             && statusClass == "4xx");
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "stokio.legacy_api.requests"
+            && measurement.Tags.TryGetValue("http.route", out var route)
+            && route == "/api/products");
         Assert.Contains(measurements, measurement =>
             measurement.Name == "stokio.auth.logins"
             && measurement.Tags.TryGetValue("outcome", out var outcome)

@@ -15,6 +15,7 @@ public sealed class OpenTelemetryMetricsRecorder : IMetricsRecorder, IDisposable
     private readonly Histogram<double> _requestLatency;
     private readonly Counter<long> _clientErrorCounter;
     private readonly Counter<long> _serverErrorCounter;
+    private readonly Counter<long> _legacyApiRequestCounter;
     private readonly Counter<long> _loginCounter;
     private readonly Counter<long> _stockMovementCounter;
     private readonly Counter<long> _criticalStockMovementCounter;
@@ -38,6 +39,9 @@ public sealed class OpenTelemetryMetricsRecorder : IMetricsRecorder, IDisposable
         _serverErrorCounter = _meter.CreateCounter<long>(
             "stokio.http.server_errors",
             description: "HTTP requests completed with 5xx status codes.");
+        _legacyApiRequestCounter = _meter.CreateCounter<long>(
+            "stokio.legacy_api.requests",
+            description: "Legacy /api requests that should migrate to /api/v1 before sunset.");
         _loginCounter = _meter.CreateCounter<long>(
             "stokio.auth.logins",
             description: "Login attempts by outcome.");
@@ -85,6 +89,20 @@ public sealed class OpenTelemetryMetricsRecorder : IMetricsRecorder, IDisposable
         }
     }
 
+    public void RecordLegacyApiRequest(string method, string route, string client, DateTimeOffset observedAtUtc)
+    {
+        _ = client;
+        _ = observedAtUtc;
+
+        var tags = new TagList
+        {
+            { "http.request.method", method },
+            { "http.route", route }
+        };
+
+        _legacyApiRequestCounter.Add(1, tags);
+    }
+
     public void RecordLogin(bool succeeded)
     {
         _loginCounter.Add(1, OutcomeTags(succeeded));
@@ -130,6 +148,12 @@ public sealed class OpenTelemetryMetricsRecorder : IMetricsRecorder, IDisposable
     public MetricsSnapshotDto Snapshot()
     {
         throw new NotSupportedException("Metrics snapshots are only available when the debug in-memory recorder is enabled.");
+    }
+
+    public LegacyApiUsageReportDto LegacyApiUsageReport(DateTimeOffset generatedAtUtc)
+    {
+        _ = generatedAtUtc;
+        throw new NotSupportedException("Legacy API usage reports are only available when the debug in-memory recorder is enabled.");
     }
 
     public void Dispose()

@@ -269,23 +269,26 @@ app.MapGet("/health/ready", async (
     .AllowAnonymous()
     .WithTags("Health");
 
-app.MapAuthEndpoints("/api/auth");
-app.MapProductEndpoints("/api/products");
-app.MapCategoryEndpoints("/api/categories");
-app.MapCustomerEndpoints("/api/customers");
-app.MapSupplierEndpoints("/api/suppliers");
-app.MapWarehouseEndpoints("/api/warehouses");
-app.MapUserEndpoints("/api/users");
-app.MapStockEndpoints("/api/stock");
-app.MapInventoryCountEndpoints("/api/counts");
-app.MapSalesOrderEndpoints("/api/orders");
-app.MapPurchaseRequestEndpoints("/api/purchase-requests");
-app.MapShipmentEndpoints("/api/shipments");
-app.MapReturnRequestEndpoints("/api/returns");
-app.MapReportEndpoints("/api/reports");
-app.MapExportEndpoints("/api/exports");
-app.MapDashboardEndpoints("/api/dashboard");
-app.MapObservabilityEndpoints("/api/observability", observabilityMetricsOptions.EnableDebugSnapshotEndpoint);
+if (LegacyApiDeprecationMiddleware.ShouldMapLegacyRoutes(DateTimeOffset.UtcNow))
+{
+    app.MapAuthEndpoints("/api/auth");
+    app.MapProductEndpoints("/api/products");
+    app.MapCategoryEndpoints("/api/categories");
+    app.MapCustomerEndpoints("/api/customers");
+    app.MapSupplierEndpoints("/api/suppliers");
+    app.MapWarehouseEndpoints("/api/warehouses");
+    app.MapUserEndpoints("/api/users");
+    app.MapStockEndpoints("/api/stock");
+    app.MapInventoryCountEndpoints("/api/counts");
+    app.MapSalesOrderEndpoints("/api/orders");
+    app.MapPurchaseRequestEndpoints("/api/purchase-requests");
+    app.MapShipmentEndpoints("/api/shipments");
+    app.MapReturnRequestEndpoints("/api/returns");
+    app.MapReportEndpoints("/api/reports");
+    app.MapExportEndpoints("/api/exports");
+    app.MapDashboardEndpoints("/api/dashboard");
+    app.MapObservabilityEndpoints("/api/observability", observabilityMetricsOptions.EnableDebugSnapshotEndpoint);
+}
 
 app.MapAuthEndpoints("/api/v1/auth");
 app.MapProductEndpoints("/api/v1/products");
